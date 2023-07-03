@@ -326,6 +326,7 @@ public sealed class RecordingsManager : IRecordingsManager, IDisposable
                         ItemId = channel.Id,
                         OpenToken = mediaStreamInfo.OpenToken
                     },
+                    false,
                     CancellationToken.None).ConfigureAwait(false);
 
                 mediaStreamInfo = liveStreamResponse.Item1.MediaSource;

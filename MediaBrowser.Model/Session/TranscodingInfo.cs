@@ -29,6 +29,8 @@ namespace MediaBrowser.Model.Session
 
         public HardwareEncodingType? HardwareAccelerationType { get; set; }
 
+        public string LiveStreamId { get; set; }
+
         public TranscodeReason TranscodeReasons { get; set; }
     }
 }

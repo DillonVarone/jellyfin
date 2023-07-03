@@ -8,6 +8,7 @@ using System.Threading.Tasks;
 using MediaBrowser.Controller.Library;
 using MediaBrowser.Model.Dto;
 using MediaBrowser.Model.LiveTv;
+using MediaBrowser.Model.MediaInfo;
 
 namespace MediaBrowser.Controller.LiveTv
 {
@@ -40,10 +41,11 @@ namespace MediaBrowser.Controller.LiveTv
         /// </summary>
         /// <param name="channelId">The channel identifier.</param>
         /// <param name="streamId">The stream identifier.</param>
+        /// <param name="request">The stream request.</param>
         /// <param name="currentLiveStreams">The current live streams.</param>
         /// <param name="cancellationToken">The cancellation token to cancel operation.</param>
         /// <returns>Live stream wrapped in a task.</returns>
-        Task<ILiveStream> GetChannelStream(string channelId, string streamId, IList<ILiveStream> currentLiveStreams, CancellationToken cancellationToken);
+        Task<ILiveStream> GetChannelStream(string channelId, string streamId, LiveStreamRequest request, IList<ILiveStream> currentLiveStreams, CancellationToken cancellationToken);
 
         /// <summary>
         /// Gets the channel stream media sources.

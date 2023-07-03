@@ -6571,7 +6571,17 @@ namespace MediaBrowser.Controller.MediaEncoding
 
             if (state.MediaSource.RequiresLooping)
             {
-                inputModifier += " -stream_loop -1 -reconnect_at_eof 1 -reconnect_streamed 1 -reconnect_delay_max 2";
+                inputModifier += " -stream_loop -1";
+            }
+
+            if (state.InputProtocol == MediaProtocol.Http) {
+                inputModifier += " -reconnect 1 -reconnect_on_network_error 1 -reconnect_on_http_error 1 -reconnect_at_eof 1 -reconnect_streamed 1 -reconnect_delay_max 2";
+            }
+
+            if (state.MediaSource.IsInfiniteStream)
+            {
+                /* this is a live stream, so read it at native frame rate */
+                inputModifier += " -re";
             }
 
             return inputModifier;
@@ -6876,7 +6886,8 @@ namespace MediaBrowser.Controller.MediaEncoding
 
                 if (state.RunTimeTicks.HasValue && state.BaseRequest.CopyTimestamps)
                 {
-                    args += " -copyts -avoid_negative_ts disabled -start_at_zero";
+                    //args += " -copyts -avoid_negative_ts disabled -start_at_zero";
+                    args += " -avoid_negative_ts disabled -start_at_zero";
                 }
 
                 if (!state.RunTimeTicks.HasValue)
@@ -6910,7 +6921,7 @@ namespace MediaBrowser.Controller.MediaEncoding
                 {
                     if (!hasCopyTs)
                     {
-                        args += " -copyts";
+                        //args += " -copyts";
                     }
 
                     args += " -avoid_negative_ts disabled";

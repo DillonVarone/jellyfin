@@ -8,11 +8,14 @@ using System.Globalization;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Collections.Concurrent;
+using System.Collections.Generic;
 using MediaBrowser.Common.Configuration;
 using MediaBrowser.Controller.Library;
 using MediaBrowser.Model.Dto;
 using MediaBrowser.Model.IO;
 using MediaBrowser.Model.LiveTv;
+using MediaBrowser.Model.MediaInfo;
 using Microsoft.Extensions.Logging;
 
 namespace Jellyfin.LiveTv.TunerHosts
@@ -46,6 +49,8 @@ namespace Jellyfin.LiveTv.TunerHosts
 
             ConsumerCount = 1;
             SetTempFilePath("ts");
+
+            SessionIds = new ConcurrentDictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         }
 
         protected IFileSystem FileSystem { get; }
@@ -57,6 +62,8 @@ namespace Jellyfin.LiveTv.TunerHosts
         protected CancellationTokenSource LiveStreamCancellationTokenSource { get; } = new CancellationTokenSource();
 
         protected string TempFilePath { get; set; }
+
+        protected string TempCacheFilePath { get; set; }
 
         public MediaSourceInfo OriginalMediaSource { get; set; }
 
@@ -74,9 +81,19 @@ namespace Jellyfin.LiveTv.TunerHosts
 
         public DateTime DateOpened { get; protected set; }
 
+        public bool AllowCleanup { get; set; }
+
+        public bool IsEndless { get; set; }
+        public ConcurrentDictionary<string, string> SessionIds { get; set; }
+
         protected void SetTempFilePath(string extension)
         {
             TempFilePath = Path.Combine(_configurationManager.GetTranscodePath(), UniqueId + "." + extension);
+        }
+
+        protected void SetCacheTempFilePath(string extension)
+        {
+            TempCacheFilePath = Path.Combine(_configurationManager.GetTranscodePath(), UniqueId + "." + extension);
         }
 
         public virtual Task Open(CancellationToken openCancellationToken)
@@ -85,7 +102,7 @@ namespace Jellyfin.LiveTv.TunerHosts
             return Task.CompletedTask;
         }
 
-        public async Task Close()
+        public virtual async Task Close()
         {
             EnableStreamSharing = false;
 
@@ -104,13 +121,48 @@ namespace Jellyfin.LiveTv.TunerHosts
                 IODefaults.FileStreamBufferSize,
                 FileOptions.SequentialScan | FileOptions.Asynchronous);
 
-            bool seekFile = (DateTime.UtcNow - DateOpened).TotalSeconds > 10;
-            if (seekFile)
+            double elapsedTime = (DateTime.UtcNow - DateOpened).TotalSeconds;
+
+            if (elapsedTime > 10.0)
             {
-                TrySeek(stream, -20000);
+                double streamDataRateBps = (double)stream.Length / elapsedTime;
+                long offset = (long)(streamDataRateBps * 10.0);
+
+                if (offset < stream.Length) {
+                    Logger.LogInformation("Providing stream offset {0}s, {1}B from tip", 10.0, offset);
+                    TrySeek(stream, -offset);
+                }
             }
 
             return stream;
+        }
+
+        public virtual Task RegisterOwner(string sessionId)
+        {
+            SessionIds.AddOrUpdate(sessionId, "", (key, oldValue) => "");
+
+            return Task.CompletedTask;
+        }
+
+        public virtual Task UnregisterOwner(string sessionId)
+        {
+            SessionIds.TryRemove(sessionId, out _);
+
+            return Task.CompletedTask;
+        }
+
+        public virtual Task RegisterTranscoder(string sessionId, string transcodeJobId)
+        {
+            if (SessionIds.TryGetValue(sessionId, out var oldTranscodeJobId)) {
+                SessionIds.TryUpdate(sessionId, transcodeJobId, oldTranscodeJobId);
+            }
+
+            return Task.CompletedTask;
+        }
+
+        public virtual bool IsAlive()
+        {
+            return true;
         }
 
         /// <inheritdoc />

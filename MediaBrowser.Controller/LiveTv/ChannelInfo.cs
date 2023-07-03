@@ -2,6 +2,7 @@
 
 #pragma warning disable CS1591
 
+using System.Collections.Generic;
 using MediaBrowser.Model.LiveTv;
 
 namespace MediaBrowser.Controller.LiveTv
@@ -30,6 +31,8 @@ namespace MediaBrowser.Controller.LiveTv
         public string Id { get; set; }
 
         public string Path { get; set; }
+
+        public List<string> BackupPaths { get; set; }
 
         public string TunerChannelId { get; set; }
 

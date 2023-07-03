@@ -402,6 +402,7 @@ namespace Emby.Server.Implementations
             ConfigurationManager.NamedConfigurationUpdated += OnConfigurationUpdated;
 
             Resolve<IMediaEncoder>().SetFFmpegPath();
+            Resolve<IMediaEncoder>().UpdateMpegtsProxyPath();
 
             Logger.LogInformation("ServerId: {ServerId}", SystemId);
             Logger.LogInformation("Core startup complete");

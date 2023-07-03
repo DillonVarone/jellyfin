@@ -90,6 +90,8 @@ namespace MediaBrowser.MediaEncoding.Encoder
 
         private Version _ffmpegVersion = null;
         private string _ffmpegPath = string.Empty;
+        private string _mpegtsProxyPath = string.Empty;
+        private static string _mpegtsProxyVariable = "MPEGTS_PROXY_PATH";
         private string _ffprobePath;
         private int _threads;
 
@@ -120,6 +122,9 @@ namespace MediaBrowser.MediaEncoding.Encoder
 
         /// <inheritdoc />
         public string EncoderPath => _ffmpegPath;
+
+        /// <inheritdoc />
+        public string MpegtsProxyPath => _mpegtsProxyPath;
 
         /// <inheritdoc />
         public string ProbePath => _ffprobePath;
@@ -227,6 +232,28 @@ namespace MediaBrowser.MediaEncoding.Encoder
             }
 
             _logger.LogInformation("FFmpeg: {FfmpegPath}", _ffmpegPath ?? string.Empty);
+        }
+
+        /// <summary>
+        /// Run at startup.
+        /// Updates global variables mpegtsProxyPath is path is present.
+        /// </summary>
+        public void UpdateMpegtsProxyPath()
+        {
+            var mpegtsProxyPath = Environment.GetEnvironmentVariable(_mpegtsProxyVariable);
+
+            if (!string.IsNullOrEmpty(mpegtsProxyPath) && Directory.Exists(mpegtsProxyPath))
+            {
+                mpegtsProxyPath = Path.Combine(mpegtsProxyPath, "mpegtsProxy");
+                if (!File.Exists(mpegtsProxyPath))
+                {
+                    mpegtsProxyPath = string.Empty;
+                }
+            } else {
+                mpegtsProxyPath = string.Empty;
+            }
+
+            _mpegtsProxyPath = mpegtsProxyPath;
         }
 
         /// <summary>

@@ -28,6 +28,12 @@ namespace MediaBrowser.Controller.MediaEncoding
         string EncoderPath { get; }
 
         /// <summary>
+        /// Gets the mpegtsProxy path.
+        /// </summary>
+        /// <value>The mpegtsProxy path.</value>
+        string MpegtsProxyPath { get; }
+
+        /// <summary>
         /// Gets the probe path.
         /// </summary>
         /// <value>The probe path.</value>
@@ -222,6 +228,11 @@ namespace MediaBrowser.Controller.MediaEncoding
         /// Sets the path to find FFmpeg.
         /// </summary>
         void SetFFmpegPath();
+
+        /// <summary>
+        /// Sets the path to find mpegtsProxy.
+        /// </summary>
+        void UpdateMpegtsProxyPath();
 
         /// <summary>
         /// Updates the encoder path.

@@ -7,6 +7,7 @@ using System.Text.Json.Serialization;
 using Jellyfin.Data.Enums;
 using MediaBrowser.Model.Dlna;
 using MediaBrowser.Model.Entities;
+using MediaBrowser.Model.LiveTv;
 using MediaBrowser.Model.MediaInfo;
 using MediaBrowser.Model.Session;
 
@@ -31,6 +32,7 @@ namespace MediaBrowser.Model.Dto
         public string Id { get; set; }
 
         public string Path { get; set; }
+        public List<string> BackupPaths { get; set; }
 
         public string EncoderPath { get; set; }
 

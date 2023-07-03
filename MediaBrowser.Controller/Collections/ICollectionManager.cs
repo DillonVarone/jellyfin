@@ -63,5 +63,12 @@ namespace MediaBrowser.Controller.Collections
         /// <param name="createIfNeeded">Will create the collection folder on the storage if set to true.</param>
         /// <returns>The folder instance referencing the collection storage.</returns>
         Task<Folder?> GetCollectionsFolder(bool createIfNeeded);
+
+        /// <summary>
+        /// Gets all collections.
+        /// </summary>
+        /// <param name="user">The user.</param>
+        /// <returns>IEnumerable{BoxSet}.</returns>
+        IEnumerable<BoxSet> GetCollections(User user);
     }
 }

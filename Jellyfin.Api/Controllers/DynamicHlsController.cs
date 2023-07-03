@@ -19,6 +19,7 @@ using MediaBrowser.Common.Configuration;
 using MediaBrowser.Controller.Configuration;
 using MediaBrowser.Controller.Library;
 using MediaBrowser.Controller.MediaEncoding;
+using MediaBrowser.Controller.Session;
 using MediaBrowser.Controller.Streaming;
 using MediaBrowser.MediaEncoding.Encoder;
 using MediaBrowser.Model.Configuration;
@@ -26,6 +27,7 @@ using MediaBrowser.Model.Dlna;
 using MediaBrowser.Model.Entities;
 using MediaBrowser.Model.IO;
 using MediaBrowser.Model.Net;
+using MediaBrowser.Model.Session;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
@@ -48,6 +50,7 @@ public class DynamicHlsController : BaseJellyfinApiController
 
     private readonly ILibraryManager _libraryManager;
     private readonly IUserManager _userManager;
+    private readonly ISessionManager _sessionManager;
     private readonly IMediaSourceManager _mediaSourceManager;
     private readonly IServerConfigurationManager _serverConfigurationManager;
     private readonly IMediaEncoder _mediaEncoder;
@@ -64,6 +67,7 @@ public class DynamicHlsController : BaseJellyfinApiController
     /// </summary>
     /// <param name="libraryManager">Instance of the <see cref="ILibraryManager"/> interface.</param>
     /// <param name="userManager">Instance of the <see cref="IUserManager"/> interface.</param>
+    /// <param name="sessionManager">Instance of the <see cref="ISessionManager"/> interface.</param>
     /// <param name="mediaSourceManager">Instance of the <see cref="IMediaSourceManager"/> interface.</param>
     /// <param name="serverConfigurationManager">Instance of the <see cref="IServerConfigurationManager"/> interface.</param>
     /// <param name="mediaEncoder">Instance of the <see cref="IMediaEncoder"/> interface.</param>
@@ -76,6 +80,7 @@ public class DynamicHlsController : BaseJellyfinApiController
     public DynamicHlsController(
         ILibraryManager libraryManager,
         IUserManager userManager,
+        ISessionManager sessionManager,
         IMediaSourceManager mediaSourceManager,
         IServerConfigurationManager serverConfigurationManager,
         IMediaEncoder mediaEncoder,
@@ -88,6 +93,7 @@ public class DynamicHlsController : BaseJellyfinApiController
     {
         _libraryManager = libraryManager;
         _userManager = userManager;
+        _sessionManager = sessionManager;
         _mediaSourceManager = mediaSourceManager;
         _serverConfigurationManager = serverConfigurationManager;
         _mediaEncoder = mediaEncoder;
@@ -280,6 +286,7 @@ public class DynamicHlsController : BaseJellyfinApiController
                 HttpContext,
                 _mediaSourceManager,
                 _userManager,
+                _sessionManager,
                 _libraryManager,
                 _serverConfigurationManager,
                 _mediaEncoder,
@@ -1374,6 +1381,7 @@ public class DynamicHlsController : BaseJellyfinApiController
                 HttpContext,
                 _mediaSourceManager,
                 _userManager,
+                _sessionManager,
                 _libraryManager,
                 _serverConfigurationManager,
                 _mediaEncoder,
@@ -1412,6 +1420,7 @@ public class DynamicHlsController : BaseJellyfinApiController
                 HttpContext,
                 _mediaSourceManager,
                 _userManager,
+                _sessionManager,
                 _libraryManager,
                 _serverConfigurationManager,
                 _mediaEncoder,
@@ -1474,6 +1483,8 @@ public class DynamicHlsController : BaseJellyfinApiController
             if (startTranscoding)
             {
                 // If the playlist doesn't already exist, startup ffmpeg
+                _logger.LogInformation("Starting transcoding for playSession {0} to get segment {1}", streamingRequest.PlaySessionId, segmentId);
+
                 try
                 {
                     await _transcodeManager.KillTranscodingJobs(streamingRequest.DeviceId, streamingRequest.PlaySessionId, p => false)

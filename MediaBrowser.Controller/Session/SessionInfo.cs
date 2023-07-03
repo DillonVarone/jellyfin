@@ -9,6 +9,7 @@ using System.Text.Json.Serialization;
 using System.Threading;
 using System.Threading.Tasks;
 using Jellyfin.Data.Enums;
+using MediaBrowser.Common.Extensions;
 using MediaBrowser.Controller.Entities;
 using MediaBrowser.Model.Dto;
 using MediaBrowser.Model.Session;
@@ -352,6 +353,11 @@ namespace MediaBrowser.Controller.Session
             try
             {
                 await _sessionManager.OnPlaybackProgress(progressInfo, true).ConfigureAwait(false);
+            }
+            catch (ResourceNotFoundException ex)
+            {
+                _logger.LogError(ex, "Error reporting playback progress, session closed.");
+                StopAutomaticProgress();
             }
             catch (Exception ex)
             {
