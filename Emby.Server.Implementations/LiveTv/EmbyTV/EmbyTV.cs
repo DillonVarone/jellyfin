@@ -1039,7 +1039,8 @@ namespace Emby.Server.Implementations.LiveTv.EmbyTV
                 RequiresClosing = false,
                 BufferMs = 0,
                 IgnoreDts = true,
-                IgnoreIndex = true
+                IgnoreIndex = true,
+                AnalyzeDurationMs = 3000
             };
 
             await new LiveStreamHelper(_mediaEncoder, _logger, _config.CommonApplicationPaths)

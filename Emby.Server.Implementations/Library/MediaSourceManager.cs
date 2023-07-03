@@ -21,6 +21,8 @@ using MediaBrowser.Controller.Library;
 using MediaBrowser.Controller.MediaEncoding;
 using MediaBrowser.Controller.Persistence;
 using MediaBrowser.Controller.Providers;
+using MediaBrowser.Controller.Configuration;
+using MediaBrowser.Controller.Extensions;
 using MediaBrowser.Model.Dlna;
 using MediaBrowser.Model.Dto;
 using MediaBrowser.Model.Entities;
@@ -28,6 +30,7 @@ using MediaBrowser.Model.Globalization;
 using MediaBrowser.Model.IO;
 using MediaBrowser.Model.MediaInfo;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Configuration;
 
 namespace Emby.Server.Implementations.Library
 {
@@ -46,6 +49,7 @@ namespace Emby.Server.Implementations.Library
         private readonly ILocalizationManager _localizationManager;
         private readonly IApplicationPaths _appPaths;
         private readonly IDirectoryService _directoryService;
+        private readonly IConfiguration _config;
 
         private readonly ConcurrentDictionary<string, ILiveStream> _openStreams = new ConcurrentDictionary<string, ILiveStream>(StringComparer.OrdinalIgnoreCase);
         private readonly SemaphoreSlim _liveStreamSemaphore = new SemaphoreSlim(1, 1);
@@ -63,7 +67,8 @@ namespace Emby.Server.Implementations.Library
             IFileSystem fileSystem,
             IUserDataManager userDataManager,
             IMediaEncoder mediaEncoder,
-            IDirectoryService directoryService)
+            IDirectoryService directoryService,
+            IConfiguration config)
         {
             _itemRepo = itemRepo;
             _userManager = userManager;
@@ -75,6 +80,7 @@ namespace Emby.Server.Implementations.Library
             _localizationManager = localizationManager;
             _appPaths = applicationPaths;
             _directoryService = directoryService;
+            _config = config;
         }
 
         public void AddParts(IEnumerable<IMediaSourceProvider> providers)
@@ -649,11 +655,6 @@ namespace Emby.Server.Implementations.Library
                     await Task.Delay(delayMs, cancellationToken).ConfigureAwait(false);
                 }
 
-                if (isLiveStream)
-                {
-                    mediaSource.AnalyzeDurationMs = 3000;
-                }
-
                 mediaInfo = await _mediaEncoder.GetMediaInfo(
                     new MediaInfoRequest
                 {
@@ -751,11 +752,6 @@ namespace Emby.Server.Implementations.Library
 
                 // This is coming up false and preventing stream copy
                 videoStream.IsAVC = null;
-            }
-
-            if (isLiveStream)
-            {
-                mediaSource.AnalyzeDurationMs = 3000;
             }
 
             // Try to estimate this
