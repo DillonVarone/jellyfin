@@ -23,6 +23,8 @@ namespace MediaBrowser.Model.MediaInfo
 
         public string PlaySessionId { get; set; }
 
+        public string SessionId { get; set; }
+
         public int? MaxStreamingBitrate { get; set; }
 
         public long? StartTimeTicks { get; set; }

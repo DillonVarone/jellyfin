@@ -87,11 +87,19 @@ namespace MediaBrowser.Controller.Library
         /// Opens the media source.
         /// </summary>
         /// <param name="request">The request.</param>
+        /// <param name="allowCleanup">Allow session manager to close this stream if unused.</param>
+        /// <param name="cancellationToken">The cancellation token.</param>
+        /// <returns>Task&lt;MediaSourceInfo&gt;.</returns>
+        Task<LiveStreamResponse> OpenLiveStream(LiveStreamRequest request, bool allowCleanup, CancellationToken cancellationToken);
+        /// <summary>
+        /// Opens the media source.
+        /// </summary>
+        /// <param name="request">The request.</param>
         /// <param name="cancellationToken">The cancellation token.</param>
         /// <returns>Task&lt;MediaSourceInfo&gt;.</returns>
         Task<LiveStreamResponse> OpenLiveStream(LiveStreamRequest request, CancellationToken cancellationToken);
 
-        Task<Tuple<LiveStreamResponse, IDirectStreamProvider>> OpenLiveStreamInternal(LiveStreamRequest request, CancellationToken cancellationToken);
+        Task<Tuple<LiveStreamResponse, IDirectStreamProvider>> OpenLiveStreamInternal(LiveStreamRequest request, bool allowCleanup, CancellationToken cancellationToken);
 
         /// <summary>
         /// Gets the live stream.
@@ -132,6 +140,32 @@ namespace MediaBrowser.Controller.Library
         /// <returns>Task.</returns>
         Task CloseLiveStream(string id);
 
+        /// <summary>
+        /// Closes the media source.
+        /// </summary>
+        /// <param name="id">The live stream identifier.</param>
+        /// <param name="sessionId">The session identifier.</param>
+        /// <returns>Task.</returns>
+        Task CloseLiveStream(string id, string sessionId);
+
+        /// <summary>
+        /// Registers Transcoder as livestream owner.
+        /// </summary>
+        /// <param name="id">The live stream identifier.</param>
+        /// <param name="sessionId">The session identifier.</param>
+        /// <param name="transcodeJobId">The transcode job identifier.</param>
+        /// <returns>Task.</returns>
+        Task RegisterTranscoderForLiveStream(string id, string sessionId, string transcodeJobId);
+
+        /// <summary>
+        /// Unregisters Transcoder as livestream owner.
+        /// </summary>
+        /// <param name="id">The live stream identifier.</param>
+        /// <param name="sessionId">The session identifier.</param>
+        /// <param name="transcodeJobId">The transcode job identifier.</param>
+        /// <returns>Task.</returns>
+        Task UnregisterTranscoderForLiveStream(string id, string sessionId, string transcodeJobId);
+
         Task<MediaSourceInfo> GetLiveStreamMediaInfo(string id, CancellationToken cancellationToken);
 
         bool SupportsDirectStream(string path, MediaProtocol protocol);
@@ -141,5 +175,7 @@ namespace MediaBrowser.Controller.Library
         void SetDefaultAudioAndSubtitleStreamIndices(BaseItem item, MediaSourceInfo source, User user);
 
         Task AddMediaInfoWithProbe(MediaSourceInfo mediaSource, bool isAudio, string cacheKey, bool addProbeDelay, bool isLiveStream, CancellationToken cancellationToken);
+
+        List<KeyValuePair<string, ILiveStream>> GetOpenStreams();
     }
 }

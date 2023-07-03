@@ -18,6 +18,11 @@ public class StreamingRequestDto : BaseEncodingJobOptions
     public string? PlaySessionId { get; set; }
 
     /// <summary>
+    /// Gets or sets the session id.
+    /// </summary>
+    public string? SessionId { get; set; }
+
+    /// <summary>
     /// Gets or sets the tag.
     /// </summary>
     public string? Tag { get; set; }

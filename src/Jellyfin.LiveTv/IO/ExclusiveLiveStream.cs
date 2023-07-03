@@ -8,6 +8,8 @@ using System.Globalization;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Collections.Concurrent;
+using System.Collections.Generic;
 using MediaBrowser.Controller.Library;
 using MediaBrowser.Model.Dto;
 
@@ -24,6 +26,7 @@ namespace Jellyfin.LiveTv.IO
             _closeFn = closeFn;
             ConsumerCount = 1;
             UniqueId = Guid.NewGuid().ToString("N", CultureInfo.InvariantCulture);
+            SessionIds = new ConcurrentDictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         }
 
         public int ConsumerCount { get; set; }
@@ -38,6 +41,10 @@ namespace Jellyfin.LiveTv.IO
 
         public string UniqueId { get; }
 
+        public bool AllowCleanup { get; set; }
+
+        public ConcurrentDictionary<string, string> SessionIds { get; set; }
+
         public Task Close()
         {
             return _closeFn();
@@ -51,6 +58,26 @@ namespace Jellyfin.LiveTv.IO
         public Task Open(CancellationToken openCancellationToken)
         {
             return Task.CompletedTask;
+        }
+
+        public Task RegisterOwner(string sessionId)
+        {
+            return Task.CompletedTask;
+        }
+
+        public Task UnregisterOwner(string sessionId)
+        {
+            return Task.CompletedTask;
+        }
+
+        public Task RegisterTranscoder(string sessionId, string transcodeJobId)
+        {
+            return Task.CompletedTask;
+        }
+
+        public bool IsAlive()
+        {
+            return true;
         }
 
         /// <inheritdoc />

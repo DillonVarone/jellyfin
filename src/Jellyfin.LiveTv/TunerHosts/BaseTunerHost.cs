@@ -17,6 +17,8 @@ using MediaBrowser.Controller.LiveTv;
 using MediaBrowser.Model.Dto;
 using MediaBrowser.Model.IO;
 using MediaBrowser.Model.LiveTv;
+using MediaBrowser.Model.MediaInfo;
+using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging;
 
 namespace Jellyfin.LiveTv.TunerHosts
@@ -166,9 +168,9 @@ namespace Jellyfin.LiveTv.TunerHosts
             return new List<MediaSourceInfo>();
         }
 
-        protected abstract Task<ILiveStream> GetChannelStream(TunerHostInfo tunerHost, ChannelInfo channel, string streamId, IList<ILiveStream> currentLiveStreams, CancellationToken cancellationToken);
+        protected abstract Task<ILiveStream> GetChannelStream(TunerHostInfo tunerHost, ChannelInfo channel, string streamId, LiveStreamRequest request, IList<ILiveStream> currentLiveStreams, CancellationToken cancellationToken);
 
-        public async Task<ILiveStream> GetChannelStream(string channelId, string streamId, IList<ILiveStream> currentLiveStreams, CancellationToken cancellationToken)
+        public async Task<ILiveStream> GetChannelStream(string channelId, string streamId, LiveStreamRequest request, IList<ILiveStream> currentLiveStreams, CancellationToken cancellationToken)
         {
             ArgumentException.ThrowIfNullOrEmpty(channelId);
 
@@ -206,7 +208,7 @@ namespace Jellyfin.LiveTv.TunerHosts
 
                 try
                 {
-                    var liveStream = await GetChannelStream(host, channelInfo, streamId, currentLiveStreams, cancellationToken).ConfigureAwait(false);
+                    var liveStream = await GetChannelStream(host, channelInfo, streamId, request, currentLiveStreams, cancellationToken).ConfigureAwait(false);
                     var startTime = DateTime.UtcNow;
                     await liveStream.Open(cancellationToken).ConfigureAwait(false);
                     var endTime = DateTime.UtcNow;

@@ -132,6 +132,30 @@ namespace Jellyfin.LiveTv.TunerHosts
                 channel.ChannelGroup = groupTitle;
             }
 
+            if (attributes.TryGetValue("backup-src", out string backups))
+            {
+                var backupPaths = backups.Split(',');
+                if (backupPaths.Length > 0) {
+                    channel.BackupPaths = new List<string>(backupPaths);;
+                } else {
+                    channel.BackupPaths = new List<string>();
+                }
+            } else {
+                channel.BackupPaths = new List<string>();
+            }
+
+            if (attributes.TryGetValue("num-alts", out string strNumBackups))
+            {
+                var numBackups = int.Parse(strNumBackups, CultureInfo.InvariantCulture);
+                channel.BackupPaths = new List<string>();
+                for (int i = 1; i < numBackups; i++) {
+                    channel.BackupPaths.Add(string.Format(CultureInfo.InvariantCulture, "{0}/{1}", mediaUrl, i));
+                }
+                channel.BackupPaths.Add(string.Format(CultureInfo.InvariantCulture, "{0}/{1}", mediaUrl, 0));
+            } else {
+                channel.BackupPaths = new List<string>();
+            }
+
             channel.Name = GetChannelName(extInf, attributes);
             channel.Number = GetChannelNumber(extInf, attributes, mediaUrl);
 

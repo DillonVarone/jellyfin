@@ -22,6 +22,7 @@ using MediaBrowser.Controller.Library;
 using MediaBrowser.Controller.LiveTv;
 using MediaBrowser.Model.Dto;
 using MediaBrowser.Model.LiveTv;
+using MediaBrowser.Model.MediaInfo;
 using Microsoft.Extensions.Logging;
 
 namespace Jellyfin.LiveTv
@@ -458,7 +459,7 @@ namespace Jellyfin.LiveTv
             throw new NotImplementedException();
         }
 
-        public async Task<ILiveStream> GetChannelStreamWithDirectStreamProvider(string channelId, string streamId, List<ILiveStream> currentLiveStreams, CancellationToken cancellationToken)
+        public async Task<ILiveStream> GetChannelStreamWithDirectStreamProvider(string channelId, string streamId, LiveStreamRequest request, List<ILiveStream> currentLiveStreams, CancellationToken cancellationToken)
         {
             _logger.LogInformation("Streaming Channel {Id}", channelId);
 
@@ -468,9 +469,16 @@ namespace Jellyfin.LiveTv
 
             if (result is not null && result.EnableStreamSharing)
             {
-                result.ConsumerCount++;
+                if (!string.IsNullOrWhiteSpace(request.SessionId)) {
+                    if (!result.SessionIds.ContainsKey(request.SessionId)) {
+                        /* only increment the consumer count if this is a new session */
+                        result.ConsumerCount++;
+                    }
+                    /* register owner for session */
+                    await result.RegisterOwner(request.SessionId);
 
-                _logger.LogInformation("Live stream {0} consumer count is now {1}", streamId, result.ConsumerCount);
+                    _logger.LogInformation("Live stream {0} consumer count is now {1}, after adding {2}", streamId, result.ConsumerCount, request.SessionId);
+                }
 
                 return result;
             }
@@ -479,7 +487,7 @@ namespace Jellyfin.LiveTv
             {
                 try
                 {
-                    result = await hostInstance.GetChannelStream(channelId, streamId, currentLiveStreams, cancellationToken).ConfigureAwait(false);
+                    result = await hostInstance.GetChannelStream(channelId, streamId, request, currentLiveStreams, cancellationToken).ConfigureAwait(false);
 
                     var openedMediaSource = result.MediaSource;
 

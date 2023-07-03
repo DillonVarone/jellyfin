@@ -128,12 +128,29 @@ namespace Jellyfin.LiveTv
         }
 
         /// <inheritdoc />
-        public async Task<ILiveStream> OpenMediaSource(string openToken, List<ILiveStream> currentLiveStreams, CancellationToken cancellationToken)
+        public async Task<ILiveStream> OpenMediaSource(string openToken,List<ILiveStream> currentLiveStreams, CancellationToken cancellationToken)
         {
             var keys = openToken.Split(StreamIdDelimiter, 3);
             var mediaSourceId = keys.Length >= 3 ? keys[2] : null;
 
-            var info = await GetChannelStream(keys[1], mediaSourceId, currentLiveStreams, cancellationToken).ConfigureAwait(false);
+            var request = new LiveStreamRequest
+            {
+                OpenToken = openToken
+            };
+
+            var info = await GetChannelStream(keys[1], mediaSourceId, request, currentLiveStreams, cancellationToken).ConfigureAwait(false);
+            var liveStream = info.Item2;
+
+            return liveStream;
+        }
+
+        /// <inheritdoc />
+        public async Task<ILiveStream> OpenMediaSource(string openToken, LiveStreamRequest request, List<ILiveStream> currentLiveStreams, CancellationToken cancellationToken)
+        {
+            var keys = openToken.Split(StreamIdDelimiter, 3);
+            var mediaSourceId = keys.Length >= 3 ? keys[2] : null;
+
+            var info = await GetChannelStream(keys[1], mediaSourceId, request, currentLiveStreams, cancellationToken).ConfigureAwait(false);
             var liveStream = info.Item2;
 
             return liveStream;
@@ -259,6 +276,7 @@ namespace Jellyfin.LiveTv
         private async Task<Tuple<MediaSourceInfo, ILiveStream>> GetChannelStream(
             string id,
             string mediaSourceId,
+            LiveStreamRequest request,
             List<ILiveStream> currentLiveStreams,
             CancellationToken cancellationToken)
         {
@@ -279,7 +297,7 @@ namespace Jellyfin.LiveTv
 #pragma warning restore CA1859
             if (service is ISupportsDirectStreamProvider supportsManagedStream)
             {
-                liveStream = await supportsManagedStream.GetChannelStreamWithDirectStreamProvider(channel.ExternalId, mediaSourceId, currentLiveStreams, cancellationToken).ConfigureAwait(false);
+                liveStream = await supportsManagedStream.GetChannelStreamWithDirectStreamProvider(channel.ExternalId, mediaSourceId, request, currentLiveStreams, cancellationToken).ConfigureAwait(false);
                 info = liveStream.MediaSource;
             }
             else

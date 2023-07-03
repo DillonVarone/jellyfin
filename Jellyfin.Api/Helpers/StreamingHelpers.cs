@@ -14,6 +14,7 @@ using MediaBrowser.Controller.Configuration;
 using MediaBrowser.Controller.Entities;
 using MediaBrowser.Controller.Library;
 using MediaBrowser.Controller.MediaEncoding;
+using MediaBrowser.Controller.Session;
 using MediaBrowser.Controller.Streaming;
 using MediaBrowser.Model.Dlna;
 using MediaBrowser.Model.Dto;
@@ -36,6 +37,7 @@ public static class StreamingHelpers
     /// <param name="httpContext">The <see cref="HttpContext"/>.</param>
     /// <param name="mediaSourceManager">Instance of the <see cref="IMediaSourceManager"/> interface.</param>
     /// <param name="userManager">Instance of the <see cref="IUserManager"/> interface.</param>
+    /// <param name="sessionManager">Instance of the <see cref="ISessionManager"/> interface.</param>
     /// <param name="libraryManager">Instance of the <see cref="ILibraryManager"/> interface.</param>
     /// <param name="serverConfigurationManager">Instance of the <see cref="IServerConfigurationManager"/> interface.</param>
     /// <param name="mediaEncoder">Instance of the <see cref="IMediaEncoder"/> interface.</param>
@@ -49,6 +51,7 @@ public static class StreamingHelpers
         HttpContext httpContext,
         IMediaSourceManager mediaSourceManager,
         IUserManager userManager,
+        ISessionManager sessionManager,
         ILibraryManager libraryManager,
         IServerConfigurationManager serverConfigurationManager,
         IMediaEncoder mediaEncoder,
@@ -109,10 +112,21 @@ public static class StreamingHelpers
                                           ?? state.SupportedSubtitleCodecs.FirstOrDefault();
         }
 
-        var item = libraryManager.GetItemById<BaseItem>(streamingRequest.Id)
-            ?? throw new ResourceNotFoundException();
+        try {
+            var sessionId = await RequestHelpers.GetSessionId(sessionManager, userManager, httpContext).ConfigureAwait(false);
+            if (!string.IsNullOrWhiteSpace(sessionId)) {
+                streamingRequest.SessionId = sessionId;
+            }
+        } catch (ArgumentNullException) {
+            /* Do nothing for now, as its not nessecarily fatal at this point */
+        }
 
-        state.IsInputVideo = item.MediaType == MediaType.Video;
+        //var item = libraryManager.GetItemById<BaseItem>(streamingRequest.Id)
+        //    ?? throw new ResourceNotFoundException();
+
+        /* just assume item is video if it is null (maybe it doesn't exist yet?) */
+        var item = libraryManager.GetItemById<BaseItem>(streamingRequest.Id);
+        state.IsInputVideo = item == null || item.MediaType == MediaType.Video;
 
         MediaSourceInfo? mediaSource = null;
         if (string.IsNullOrWhiteSpace(streamingRequest.LiveStreamId))

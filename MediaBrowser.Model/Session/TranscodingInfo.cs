@@ -73,4 +73,9 @@ public class TranscodingInfo
     /// Gets or sets the transcode reasons.
     /// </summary>
     public TranscodeReason TranscodeReasons { get; set; }
+
+    /// <summary>
+    /// Gets or sets the live stream id associated with this transcode job.
+    /// </summary>
+    public string LiveStreamId { get; set; }
 }

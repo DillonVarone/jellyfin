@@ -26,6 +26,20 @@ public interface ITranscodeManager
     public TranscodingJob? GetTranscodingJob(string path, TranscodingJobType type);
 
     /// <summary>
+    /// Get active transcoding job for session.
+    /// </summary>
+    /// <param name="sessionId">Session ID.</param>
+    /// <returns>The transcoding job.</returns>
+    public TranscodingJob? GetActiveTranscodingJobForSession(string sessionId);
+
+    /// <summary>
+    /// Get closing transcoding job for session.
+    /// </summary>
+    /// <param name="sessionId">Session ID.</param>
+    /// <returns>The transcoding job.</returns>
+    public TranscodingJob? GetClosingTranscodingJobForSession(string sessionId);
+
+    /// <summary>
     /// Ping transcoding job.
     /// </summary>
     /// <param name="playSessionId">Play session id.</param>
