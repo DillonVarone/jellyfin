@@ -5,6 +5,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Globalization;
 using System.IO;
 using System.Linq;
@@ -25,6 +26,8 @@ using MediaBrowser.Controller.LiveTv;
 using MediaBrowser.Controller.MediaEncoding;
 using MediaBrowser.Controller.Persistence;
 using MediaBrowser.Controller.Providers;
+using MediaBrowser.Controller.Configuration;
+using MediaBrowser.Controller.Extensions;
 using MediaBrowser.Model.Dlna;
 using MediaBrowser.Model.Dto;
 using MediaBrowser.Model.Entities;
@@ -32,6 +35,7 @@ using MediaBrowser.Model.Globalization;
 using MediaBrowser.Model.IO;
 using MediaBrowser.Model.MediaInfo;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Configuration;
 
 namespace Emby.Server.Implementations.Library
 {
@@ -39,6 +43,8 @@ namespace Emby.Server.Implementations.Library
     {
         // Do not use a pipe here because Roku http requests to the server will fail, without any explicit error message.
         private const char LiveStreamIdDelimeter = '_';
+
+        private const int _timeoutMs = 5000; //5s
 
         private readonly IServerApplicationHost _appHost;
         private readonly IItemRepository _itemRepo;
@@ -51,6 +57,9 @@ namespace Emby.Server.Implementations.Library
         private readonly ILocalizationManager _localizationManager;
         private readonly IApplicationPaths _appPaths;
         private readonly IDirectoryService _directoryService;
+        private readonly IConfiguration _config;
+
+        //private readonly ITranscodeManager _transcodeManager;
 
         private readonly ConcurrentDictionary<string, ILiveStream> _openStreams = new ConcurrentDictionary<string, ILiveStream>(StringComparer.OrdinalIgnoreCase);
         private readonly AsyncNonKeyedLocker _liveStreamLocker = new(1);
@@ -69,7 +78,9 @@ namespace Emby.Server.Implementations.Library
             IFileSystem fileSystem,
             IUserDataManager userDataManager,
             IMediaEncoder mediaEncoder,
-            IDirectoryService directoryService)
+            IDirectoryService directoryService,
+            IConfiguration config)
+            //ITranscodeManager transcodeManager)
         {
             _appHost = appHost;
             _itemRepo = itemRepo;
@@ -82,6 +93,8 @@ namespace Emby.Server.Implementations.Library
             _localizationManager = localizationManager;
             _appPaths = applicationPaths;
             _directoryService = directoryService;
+            _config = config;
+            //_transcodeManager = transcodeManager;
         }
 
         public void AddParts(IEnumerable<IMediaSourceProvider> providers)
@@ -474,7 +487,7 @@ namespace Emby.Server.Implementations.Library
             .ToList();
         }
 
-        public async Task<Tuple<LiveStreamResponse, IDirectStreamProvider>> OpenLiveStreamInternal(LiveStreamRequest request, CancellationToken cancellationToken)
+        public async Task<Tuple<LiveStreamResponse, IDirectStreamProvider>> OpenLiveStreamInternal(LiveStreamRequest request, bool allowCleanup, CancellationToken cancellationToken)
         {
             MediaSourceInfo mediaSource;
             ILiveStream liveStream;
@@ -485,9 +498,26 @@ namespace Emby.Server.Implementations.Library
 
                 var currentLiveStreams = _openStreams.Values.ToList();
 
-                liveStream = await provider.OpenMediaSource(keyId, currentLiveStreams, cancellationToken).ConfigureAwait(false);
+                _logger.LogInformation("Attempting to open stream {0} for {1}", keyId, request.SessionId);
+
+                liveStream = await provider.OpenMediaSource(keyId, request, currentLiveStreams, cancellationToken).ConfigureAwait(false);
 
                 mediaSource = liveStream.MediaSource;
+
+                /* if this live stream has already been opened, check if its still alive */
+                if (_openStreams.ContainsKey(mediaSource.LiveStreamId) &&
+                        !liveStream.IsAlive()) {
+                    /* stream is dead, so close and it */
+                    _logger.LogError("Stream {0} was dead, so restarting", keyId);
+
+                    liveStream.ConsumerCount = 1;
+                    await CloseLiveStreamInternal(liveStream, mediaSource.LiveStreamId);
+
+                    /* reopen live stream */
+                    liveStream = await provider.OpenMediaSource(keyId, request, currentLiveStreams, cancellationToken).ConfigureAwait(false);
+                }
+
+                liveStream.AllowCleanup = allowCleanup;
 
                 // Validate that this is actually possible
                 if (mediaSource.SupportsDirectStream)
@@ -512,7 +542,7 @@ namespace Emby.Server.Implementations.Library
                     string cacheKey = request.OpenToken;
 
                     await new LiveStreamHelper(_mediaEncoder, _logger, _appPaths)
-                        .AddMediaInfoWithProbe(mediaSource, false, cacheKey, true, cancellationToken)
+                        .AddMediaInfoWithProbe(mediaSource, false, null, false, cancellationToken)
                         .ConfigureAwait(false);
                 }
             }
@@ -590,9 +620,15 @@ namespace Emby.Server.Implementations.Library
             mediaSource.InferTotalBitrate();
         }
 
+        public async Task<LiveStreamResponse> OpenLiveStream(LiveStreamRequest request, bool allowCleanup, CancellationToken cancellationToken)
+        {
+            var result = await OpenLiveStreamInternal(request, allowCleanup, cancellationToken).ConfigureAwait(false);
+            return result.Item1;
+        }
+
         public async Task<LiveStreamResponse> OpenLiveStream(LiveStreamRequest request, CancellationToken cancellationToken)
         {
-            var result = await OpenLiveStreamInternal(request, cancellationToken).ConfigureAwait(false);
+            var result = await OpenLiveStreamInternal(request, false, cancellationToken).ConfigureAwait(false);
             return result.Item1;
         }
 
@@ -655,11 +691,6 @@ namespace Emby.Server.Implementations.Library
                     var delayMs = mediaSource.AnalyzeDurationMs ?? 0;
                     delayMs = Math.Max(3000, delayMs);
                     await Task.Delay(delayMs, cancellationToken).ConfigureAwait(false);
-                }
-
-                if (isLiveStream)
-                {
-                    mediaSource.AnalyzeDurationMs = 3000;
                 }
 
                 mediaInfo = await _mediaEncoder.GetMediaInfo(
@@ -764,11 +795,6 @@ namespace Emby.Server.Implementations.Library
                 videoStream.IsAVC = null;
             }
 
-            if (isLiveStream)
-            {
-                mediaSource.AnalyzeDurationMs = 3000;
-            }
-
             // Try to estimate this
             mediaSource.InferTotalBitrate(true);
         }
@@ -835,6 +861,21 @@ namespace Emby.Server.Implementations.Library
             };
         }
 
+        private async Task CloseLiveStreamInternal(ILiveStream liveStream, string id)
+        {
+            liveStream.ConsumerCount--;
+
+            if (liveStream.ConsumerCount <= 0)
+            {
+                _openStreams.TryRemove(id, out _);
+
+                _logger.LogInformation("Closing live stream {0}", id);
+
+                await liveStream.Close().ConfigureAwait(false);
+                _logger.LogInformation("Live stream {0} closed successfully", id);
+            }
+        }
+
         public async Task CloseLiveStream(string id)
         {
             ArgumentException.ThrowIfNullOrEmpty(id);
@@ -843,18 +884,70 @@ namespace Emby.Server.Implementations.Library
             {
                 if (_openStreams.TryGetValue(id, out ILiveStream liveStream))
                 {
-                    liveStream.ConsumerCount--;
+                    await CloseLiveStreamInternal(liveStream, id);
 
                     _logger.LogInformation("Live stream {0} consumer count is now {1}", liveStream.OriginalStreamId, liveStream.ConsumerCount);
+                }
+            }
+        }
 
-                    if (liveStream.ConsumerCount <= 0)
-                    {
-                        _openStreams.TryRemove(id, out _);
+        public async Task CloseLiveStream(string id, string sessionId)
+        {
+            ArgumentException.ThrowIfNullOrEmpty(id);
 
-                        _logger.LogInformation("Closing live stream {0}", id);
+            using (await _liveStreamLocker.LockAsync().ConfigureAwait(false))
+            {
+                if (_openStreams.TryGetValue(id, out ILiveStream liveStream))
+                {
+                    if (liveStream.SessionIds.ContainsKey(sessionId)) {
+                        await liveStream.UnregisterOwner(sessionId);
 
-                        await liveStream.Close().ConfigureAwait(false);
-                        _logger.LogInformation("Live stream {0} closed successfully", id);
+                        await CloseLiveStreamInternal(liveStream, id);
+
+                        _logger.LogInformation("Live stream {0} consumer count is now {1}, as {2} was removed", liveStream.OriginalStreamId, liveStream.ConsumerCount, sessionId);
+                    } else {
+                        _logger.LogInformation("Live stream {0} closing was skipped as {1} is not present", id, sessionId);
+                    }
+                }
+            }
+        }
+
+        public async Task RegisterTranscoderForLiveStream(string id, string sessionId, string transcodeJobId)
+        {
+            ArgumentException.ThrowIfNullOrEmpty(id);
+            ArgumentException.ThrowIfNullOrEmpty(sessionId);
+            ArgumentException.ThrowIfNullOrEmpty(transcodeJobId);
+
+            using (await _liveStreamLocker.LockAsync().ConfigureAwait(false))
+            {
+                if (_openStreams.TryGetValue(id, out ILiveStream liveStream))
+                {
+                    await liveStream.RegisterTranscoder(sessionId, transcodeJobId);
+                }
+            }
+
+            _logger.LogInformation("Live stream {0} registered transcode job {1} for session {2}", id, transcodeJobId, sessionId);
+        }
+
+        public async Task UnregisterTranscoderForLiveStream(string id, string sessionId, string transcodeJobId)
+        {
+            ArgumentException.ThrowIfNullOrEmpty(id);
+            ArgumentException.ThrowIfNullOrEmpty(sessionId);
+            ArgumentException.ThrowIfNullOrEmpty(transcodeJobId);
+
+            using (await _liveStreamLocker.LockAsync().ConfigureAwait(false))
+            {
+                if (_openStreams.TryGetValue(id, out ILiveStream liveStream))
+                {
+                    if (liveStream.SessionIds.TryGetValue(sessionId, out var curTranscodeJobId) &&
+                            !string.IsNullOrWhiteSpace(curTranscodeJobId) &&
+                            curTranscodeJobId.Equals(transcodeJobId, StringComparison.OrdinalIgnoreCase)) {
+                        /* management of the livestream was granted to transcoder job so treat this as a close */
+                        await liveStream.UnregisterOwner(sessionId);
+
+                        await CloseLiveStreamInternal(liveStream, id);
+
+                        _logger.LogInformation("Live stream {0} unregistered transcode job {1} for session {2}, consumer count {3}", id, transcodeJobId, sessionId, liveStream.ConsumerCount);
                     }
                 }
             }
@@ -872,6 +965,11 @@ namespace Emby.Server.Implementations.Library
             var keyId = key.Substring(splitIndex + 1);
 
             return (provider, keyId);
+        }
+
+        public List<KeyValuePair<string, ILiveStream>> GetOpenStreams()
+        {
+            return _openStreams.ToList();
         }
 
         /// <inheritdoc />

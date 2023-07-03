@@ -304,12 +304,34 @@ namespace Emby.Server.Implementations.Session
         {
             if (!session.SessionControllers.Any(i => i.IsSessionActive))
             {
-                var key = GetSessionKey(session.Client, session.DeviceId);
+                //var key = GetSessionKey(session.Client, session.DeviceId);
+                var key = GetSessionKey(session.Client, session.DeviceId, session.RemoteEndPoint, session.UserId.ToString());
+
+                try
+                {
+                    await OnPlaybackStopped(new PlaybackStopInfo
+                    {
+                        Item = session.NowPlayingItem,
+                        ItemId = session.NowPlayingItem is null ? Guid.Empty : session.NowPlayingItem.Id,
+                        SessionId = session.Id,
+                        MediaSourceId = session.PlayState?.MediaSourceId,
+                        PositionTicks = session.PlayState?.PositionTicks
+                    }).ConfigureAwait(false);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Error calling OnPlaybackStopped");
+                }
 
                 _activeConnections.TryRemove(key, out _);
-                if (!string.IsNullOrEmpty(session.PlayState?.LiveStreamId))
+
+                if (!string.IsNullOrEmpty(session.PlayState?.LiveStreamId) && string.IsNullOrEmpty(session.TranscodingInfo?.LiveStreamId))
                 {
-                    await _mediaSourceManager.CloseLiveStream(session.PlayState.LiveStreamId).ConfigureAwait(false);
+                    await _mediaSourceManager.CloseLiveStream(session.PlayState.LiveStreamId, session.Id).ConfigureAwait(false);
+                }
+                else
+                {
+                    await CleanupDanglingStreams(session.Id);
                 }
 
                 await OnSessionEnded(session).ConfigureAwait(false);
@@ -324,7 +346,8 @@ namespace Emby.Server.Implementations.Session
 
             if (session is not null)
             {
-                var key = GetSessionKey(session.Client, session.DeviceId);
+                //var key = GetSessionKey(session.Client, session.DeviceId);
+                var key = GetSessionKey(session.Client, session.DeviceId, session.RemoteEndPoint, session.UserId.ToString());
 
                 _activeConnections.TryRemove(key, out _);
 
@@ -436,8 +459,10 @@ namespace Emby.Server.Implementations.Session
             }
         }
 
-        private static string GetSessionKey(string appName, string deviceId)
-            => appName + deviceId;
+        //private static string GetSessionKey(string appName, string deviceId)
+            //=> appName + deviceId;
+        private static string GetSessionKey(string appName, string deviceId, string remoteEndpoint, string userId)
+            => appName + remoteEndpoint + userId;
 
         /// <summary>
         /// Gets the connection.
@@ -461,7 +486,8 @@ namespace Emby.Server.Implementations.Session
 
             ArgumentException.ThrowIfNullOrEmpty(deviceId);
 
-            var key = GetSessionKey(appName, deviceId);
+            //var key = GetSessionKey(appName, deviceId);
+            var key = GetSessionKey(appName, deviceId, remoteEndPoint, user.Id.ToString());
 
             CheckDisposed();
 
@@ -469,6 +495,7 @@ namespace Emby.Server.Implementations.Session
             {
                 sessionInfo = CreateSession(key, appName, appVersion, deviceId, deviceName, remoteEndPoint, user);
                 _activeConnections[key] = sessionInfo;
+                _logger.LogInformation("Created session {0} for user {1} app {2} on {3} at {4}", sessionInfo.Id, user.Id, appName, deviceId, remoteEndPoint);
             }
 
             sessionInfo.UserId = user?.Id ?? Guid.Empty;
@@ -594,6 +621,52 @@ namespace Emby.Server.Implementations.Session
             {
                 _inactiveTimer.Dispose();
                 _inactiveTimer = null;
+            }
+        }
+
+        private async Task CleanupDanglingStreams(string sessionId)
+        {
+            await Task.Delay(10000);
+
+            List<KeyValuePair<string, ILiveStream>> openStreams = _mediaSourceManager.GetOpenStreams();
+            bool isSessionActive = false;
+
+            /* Do initial check to see if session became active again */
+            foreach (SessionInfo session in Sessions)
+            {
+                if (sessionId == session.Id)
+                {
+                    isSessionActive = true;
+                            break;
+                }
+            }
+
+            if (isSessionActive) {
+                return;
+            }
+
+            await Task.Delay(20000);
+
+            /* Check again that session is inactive and close inactive streams */
+            foreach (SessionInfo session in Sessions)
+            {
+                if (sessionId == session.Id)
+                {
+                    isSessionActive = true;
+                            break;
+                }
+            }
+
+            if (isSessionActive) {
+                return;
+            }
+
+            foreach (KeyValuePair<string, ILiveStream> liveStream in openStreams)
+            {
+                if (liveStream.Value.AllowCleanup && liveStream.Value.SessionIds.ContainsKey(sessionId))
+                {
+                    await _mediaSourceManager.CloseLiveStream(liveStream.Key, sessionId).ConfigureAwait(false);
+                }
             }
         }
 
@@ -794,7 +867,24 @@ namespace Emby.Server.Implementations.Session
 
             ArgumentNullException.ThrowIfNull(info);
 
-            var session = GetSession(info.SessionId);
+            var session = GetSession(info.SessionId, false);
+            if (session is null)
+            {
+                return;
+            }
+
+            // if (!session.SessionControllers.Any(i => i.IsSessionActive))
+            // {
+            //     try
+            //     {
+            //         ReportSessionEnded(session.Id);
+            //     }
+            //     catch (Exception ex)
+            //     {
+            //         _logger.LogError(ex, "Error reporting session ended");
+            //     }
+            //     return;
+            // }
 
             var libraryItem = info.ItemId.IsEmpty()
                 ? null
@@ -955,7 +1045,15 @@ namespace Emby.Server.Implementations.Session
 
                     if (libraryItem is IHasMediaSources)
                     {
-                        mediaSource = await GetMediaSource(libraryItem, info.MediaSourceId, info.LiveStreamId).ConfigureAwait(false);
+                        try
+                        {
+                            mediaSource = await GetMediaSource(libraryItem, info.MediaSourceId, info.LiveStreamId).ConfigureAwait(false);
+                        }
+                        catch (ResourceNotFoundException ex)
+                        {
+                            _logger.LogError(ex, "Media no longer exists");
+                        }
+
                     }
 
                     info.Item = GetItemInfo(libraryItem, mediaSource);
@@ -995,18 +1093,6 @@ namespace Emby.Server.Implementations.Session
                 foreach (var user in users)
                 {
                     playedToCompletion = OnPlaybackStopped(user, libraryItem, info.PositionTicks, info.Failed);
-                }
-            }
-
-            if (!string.IsNullOrEmpty(info.LiveStreamId))
-            {
-                try
-                {
-                    await _mediaSourceManager.CloseLiveStream(info.LiveStreamId).ConfigureAwait(false);
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogError(ex, "Error closing live stream");
                 }
             }
 

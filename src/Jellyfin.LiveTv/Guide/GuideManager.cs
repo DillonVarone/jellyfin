@@ -7,6 +7,7 @@ using Jellyfin.Data.Enums;
 using Jellyfin.Extensions;
 using Jellyfin.LiveTv.Configuration;
 using MediaBrowser.Common.Configuration;
+using MediaBrowser.Controller.Collections;
 using MediaBrowser.Controller.Dto;
 using MediaBrowser.Controller.Entities;
 using MediaBrowser.Controller.Library;
@@ -26,6 +27,7 @@ public class GuideManager : IGuideManager
     private const int MaxGuideDays = 14;
     private const string EtagKey = "ProgramEtag";
     private const string ExternalServiceTag = "ExternalServiceId";
+    private const string TvCollectionPrefix = "TV -";
 
     private static readonly ParallelOptions _cacheParallelOptions = new() { MaxDegreeOfParallelism = Math.Min(Environment.ProcessorCount, 10) };
 
@@ -38,6 +40,8 @@ public class GuideManager : IGuideManager
     private readonly ITunerHostManager _tunerHostManager;
     private readonly IRecordingsManager _recordingsManager;
     private readonly LiveTvDtoService _tvDtoService;
+    private readonly IUserManager _userManager;
+    private readonly ICollectionManager _collectionManager;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="GuideManager"/> class.
@@ -50,6 +54,8 @@ public class GuideManager : IGuideManager
     /// <param name="liveTvManager">The <see cref="ILiveTvManager"/>.</param>
     /// <param name="tunerHostManager">The <see cref="ITunerHostManager"/>.</param>
     /// <param name="recordingsManager">The <see cref="IRecordingsManager"/>.</param>
+    /// <param name="userManager">The <see cref="IUserManager"/>.</param>
+    /// <param name="collectionManager">The <see cref="ICollectionManager"/>.</param>
     /// <param name="tvDtoService">The <see cref="LiveTvDtoService"/>.</param>
     public GuideManager(
         ILogger<GuideManager> logger,
@@ -60,6 +66,8 @@ public class GuideManager : IGuideManager
         ILiveTvManager liveTvManager,
         ITunerHostManager tunerHostManager,
         IRecordingsManager recordingsManager,
+        IUserManager userManager,
+        ICollectionManager collectionManager,
         LiveTvDtoService tvDtoService)
     {
         _logger = logger;
@@ -71,6 +79,8 @@ public class GuideManager : IGuideManager
         _tunerHostManager = tunerHostManager;
         _recordingsManager = recordingsManager;
         _tvDtoService = tvDtoService;
+        _userManager = userManager;
+        _collectionManager = collectionManager;
     }
 
     /// <inheritdoc />
@@ -102,6 +112,7 @@ public class GuideManager : IGuideManager
 
         var newChannelIdList = new List<Guid>();
         var newProgramIdList = new List<Guid>();
+        var newServiceGroups = new Dictionary<string, Dictionary<string, List<LiveTvChannel>>>();
 
         var cleanDatabase = true;
 
@@ -119,6 +130,7 @@ public class GuideManager : IGuideManager
 
                 newChannelIdList.AddRange(idList.Item1);
                 newProgramIdList.AddRange(idList.Item2);
+                newServiceGroups.Add(service.Name, idList.Item3);
             }
             catch (OperationCanceledException)
             {
@@ -150,6 +162,68 @@ public class GuideManager : IGuideManager
             await coreService.RefreshTimers(cancellationToken).ConfigureAwait(false);
         }
 
+
+        var adminUser = _userManager.Users
+                .FirstOrDefault(i => i.HasPermission(PermissionKind.IsAdministrator));
+        if (adminUser != null) {
+            // filter only the tv collections
+            var tvCollections = _collectionManager.GetCollections(adminUser).Where(i => i.Name.StartsWith(TvCollectionPrefix, StringComparison.Ordinal));
+
+            // delete old collections
+            foreach (var tvCollection in tvCollections) {
+                _logger.LogInformation("Removing old TV collection: {0}", tvCollection.Name);
+
+                _libraryManager.DeleteItem(tvCollection,
+                    new DeleteOptions
+                    {
+                        DeleteFileLocation = true,
+                        DeleteFromExternalProvider = false
+                    });
+            }
+        }
+
+        // add new TV collections
+        foreach (var newServiceGroup in newServiceGroups) {
+            foreach (var newChannelGroup in newServiceGroup.Value) {
+                // create new collection based on channel group
+                //var tvCollectionName = TvCollectionPrefix + " " + newServiceGroup.Key + " - " + newChannelGroup.Key;
+                var tvCollectionName = TvCollectionPrefix + " " + newChannelGroup.Key;
+
+                _logger.LogInformation("Adding new TV collection: {0}", tvCollectionName);
+
+                var boxSet = await _collectionManager.CreateCollectionAsync(new CollectionCreationOptions
+                {
+                    Name = tvCollectionName,
+                    ItemIdList = newChannelGroup.Value.Select(item => item.Id.ToString()).ToList(),
+                }).ConfigureAwait(false);
+
+                foreach (var newChannel in newChannelGroup.Value) {
+                    // find a channel for the sample artwork
+                    var thumbnailImgPath = newChannel.PrimaryImagePath;
+                    try
+                    {
+                        if (!string.IsNullOrEmpty(thumbnailImgPath)) {
+                            boxSet.SetImagePath(ImageType.Primary, thumbnailImgPath);
+                            await boxSet.UpdateToRepositoryAsync(ItemUpdateType.MetadataImport, cancellationToken).ConfigureAwait(false);
+                            break;
+                        }
+                    }
+                    catch (OperationCanceledException ex)
+                    {
+                        if (cancellationToken.IsCancellationRequested) {
+                            throw;
+                        } else {
+                            _logger.LogError(ex, "Error obtaining thumbnail from path {0} for {1}:", thumbnailImgPath, newChannelGroup.Key);
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "Error obtaining thumbnail from path {0} for {1}:", thumbnailImgPath, newChannelGroup.Key);
+                    }
+                }
+            }
+        }
+
         progress.Report(100);
     }
 
@@ -162,7 +236,7 @@ public class GuideManager : IGuideManager
             : 7;
     }
 
-    private async Task<Tuple<List<Guid>, List<Guid>>> RefreshChannelsInternal(ILiveTvService service, IProgress<double> progress, CancellationToken cancellationToken)
+    private async Task<(List<Guid>, List<Guid>, Dictionary<string, List<LiveTvChannel>>)> RefreshChannelsInternal(ILiveTvService service, IProgress<double> progress, CancellationToken cancellationToken)
     {
         progress.Report(10);
 
@@ -171,6 +245,7 @@ public class GuideManager : IGuideManager
             .ToList();
 
         var list = new List<LiveTvChannel>();
+        var tvGroupDictionary = new Dictionary<string, List<LiveTvChannel>>(StringComparer.Ordinal);
 
         var numComplete = 0;
         var parentFolder = _liveTvManager.GetInternalLiveTvFolder(cancellationToken);
@@ -184,6 +259,18 @@ public class GuideManager : IGuideManager
                 var item = await GetChannel(channelInfo.Item2, channelInfo.Item1, parentFolder, cancellationToken).ConfigureAwait(false);
 
                 list.Add(item);
+
+                if (channelInfo.Item2.ChannelGroup != "") {
+                    // if this is a new group title, add to the dictionary
+                    if (!tvGroupDictionary.ContainsKey(channelInfo.Item2.ChannelGroup)) {
+                        tvGroupDictionary.Add(channelInfo.Item2.ChannelGroup, new List<LiveTvChannel>());
+                    }
+
+                    // add channel id to group
+                    if (tvGroupDictionary.TryGetValue(channelInfo.Item2.ChannelGroup, out List<LiveTvChannel>? groupChannels)) {
+                        groupChannels.Add(item);
+                    }
+                }
             }
             catch (OperationCanceledException)
             {
@@ -313,7 +400,7 @@ public class GuideManager : IGuideManager
         }
 
         progress.Report(100);
-        return new Tuple<List<Guid>, List<Guid>>(channels, programs);
+        return (channels, programs, tvGroupDictionary);
     }
 
     private void CleanDatabase(Guid[] currentIdList, BaseItemKind[] validTypes, IProgress<double> progress, CancellationToken cancellationToken)

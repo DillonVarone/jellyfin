@@ -118,7 +118,7 @@ public class ListingsManager : IListingsManager
         {
             if (!IsListingProviderEnabledForTuner(providerInfo, channel.TunerHostId))
             {
-                _logger.LogDebug(
+                _logger.LogInformation(
                     "Skipping getting programs for channel {0}-{1} from {2}-{3}, because it's not enabled for this tuner.",
                     channel.Number,
                     channel.Name,
@@ -139,7 +139,7 @@ public class ListingsManager : IListingsManager
             var epgChannel = GetEpgChannelFromTunerChannel(providerInfo.ChannelMappings, channel, epgChannels);
             if (epgChannel is null)
             {
-                _logger.LogDebug("EPG channel not found for tuner channel {0}-{1} from {2}-{3}", channel.Number, channel.Name, provider.Name, providerInfo.ListingsId ?? string.Empty);
+                _logger.LogInformation("EPG channel not found for tuner channel {0}-{1} from {2}-{3}", channel.Number, channel.Name, provider.Name, providerInfo.ListingsId ?? string.Empty);
                 continue;
             }
 

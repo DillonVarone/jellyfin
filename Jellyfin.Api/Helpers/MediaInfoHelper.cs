@@ -23,6 +23,7 @@ using MediaBrowser.Model.Dto;
 using MediaBrowser.Model.Entities;
 using MediaBrowser.Model.MediaInfo;
 using MediaBrowser.Model.Session;
+using MediaBrowser.Controller.Session;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.Extensions.Logging;
@@ -43,6 +44,8 @@ public class MediaInfoHelper
     private readonly INetworkManager _networkManager;
     private readonly IDeviceManager _deviceManager;
 
+    private readonly ISessionManager _sessionManager;
+
     /// <summary>
     /// Initializes a new instance of the <see cref="MediaInfoHelper"/> class.
     /// </summary>
@@ -54,6 +57,7 @@ public class MediaInfoHelper
     /// <param name="logger">Instance of the <see cref="ILogger{MediaInfoHelper}"/> interface.</param>
     /// <param name="networkManager">Instance of the <see cref="INetworkManager"/> interface.</param>
     /// <param name="deviceManager">Instance of the <see cref="IDeviceManager"/> interface.</param>
+    /// <param name="sessionManager">Instance of the <see cref="ISessionManager"/> interface.</param>
     public MediaInfoHelper(
         IUserManager userManager,
         ILibraryManager libraryManager,
@@ -62,7 +66,8 @@ public class MediaInfoHelper
         IServerConfigurationManager serverConfigurationManager,
         ILogger<MediaInfoHelper> logger,
         INetworkManager networkManager,
-        IDeviceManager deviceManager)
+        IDeviceManager deviceManager,
+        ISessionManager sessionManager)
     {
         _userManager = userManager;
         _libraryManager = libraryManager;
@@ -72,6 +77,7 @@ public class MediaInfoHelper
         _logger = logger;
         _networkManager = networkManager;
         _deviceManager = deviceManager;
+        _sessionManager = sessionManager;
     }
 
     /// <summary>
@@ -397,7 +403,9 @@ public class MediaInfoHelper
     /// <returns>A <see cref="Task"/> containing the <see cref="LiveStreamResponse"/>.</returns>
     public async Task<LiveStreamResponse> OpenMediaSource(HttpContext httpContext, LiveStreamRequest request)
     {
-        var result = await _mediaSourceManager.OpenLiveStream(request, CancellationToken.None).ConfigureAwait(false);
+        request.SessionId = await RequestHelpers.GetSessionId(_sessionManager, _userManager, httpContext).ConfigureAwait(false);
+
+        var result = await _mediaSourceManager.OpenLiveStream(request, true, CancellationToken.None).ConfigureAwait(false);
 
         var profile = request.DeviceProfile;
         if (profile is null)

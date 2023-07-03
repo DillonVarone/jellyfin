@@ -28,6 +28,12 @@ namespace MediaBrowser.Controller.MediaEncoding
         string EncoderPath { get; }
 
         /// <summary>
+        /// Gets the mpegtsProxy path.
+        /// </summary>
+        /// <value>The mpegtsProxy path.</value>
+        string MpegtsProxyPath { get; }
+
+        /// <summary>
         /// Gets the probe path.
         /// </summary>
         /// <value>The probe path.</value>
@@ -231,6 +237,18 @@ namespace MediaBrowser.Controller.MediaEncoding
         /// </summary>
         /// <returns>bool indicates whether a valid ffmpeg is found.</returns>
         bool SetFFmpegPath();
+
+        /// <summary>
+        /// Sets the path to find mpegtsProxy.
+        /// </summary>
+        void UpdateMpegtsProxyPath();
+
+        /// <summary>
+        /// Updates the encoder path.
+        /// </summary>
+        /// <param name="path">The path.</param>
+        /// <param name="pathType">The type of path.</param>
+        void UpdateEncoderPath(string path, string pathType);
 
         /// <summary>
         /// Gets the primary playlist of .vob files.

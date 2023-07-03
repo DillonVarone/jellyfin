@@ -18,6 +18,7 @@ using MediaBrowser.Controller;
 using MediaBrowser.Controller.Configuration;
 using MediaBrowser.Controller.Library;
 using MediaBrowser.Controller.LiveTv;
+using MediaBrowser.Controller.MediaEncoding;
 using MediaBrowser.Model.Dto;
 using MediaBrowser.Model.Entities;
 using MediaBrowser.Model.IO;
@@ -38,6 +39,7 @@ namespace Jellyfin.LiveTv.TunerHosts
         private readonly INetworkManager _networkManager;
         private readonly IMediaSourceManager _mediaSourceManager;
         private readonly IStreamHelper _streamHelper;
+        private readonly IMediaEncoder _mediaEncoder;
 
         public M3UTunerHost(
             IServerConfigurationManager config,
@@ -47,7 +49,8 @@ namespace Jellyfin.LiveTv.TunerHosts
             IHttpClientFactory httpClientFactory,
             IServerApplicationHost appHost,
             INetworkManager networkManager,
-            IStreamHelper streamHelper)
+            IStreamHelper streamHelper,
+            IMediaEncoder mediaEncoder)
             : base(config, logger, fileSystem)
         {
             _httpClientFactory = httpClientFactory;
@@ -55,6 +58,7 @@ namespace Jellyfin.LiveTv.TunerHosts
             _networkManager = networkManager;
             _mediaSourceManager = mediaSourceManager;
             _streamHelper = streamHelper;
+            _mediaEncoder = mediaEncoder;
         }
 
         public override string Type => "m3u";
@@ -75,7 +79,7 @@ namespace Jellyfin.LiveTv.TunerHosts
                 .ConfigureAwait(false);
         }
 
-        protected override async Task<ILiveStream> GetChannelStream(TunerHostInfo tunerHost, ChannelInfo channel, string streamId, IList<ILiveStream> currentLiveStreams, CancellationToken cancellationToken)
+        protected override async Task<ILiveStream> GetChannelStream(TunerHostInfo tunerHost, ChannelInfo channel, string streamId, LiveStreamRequest request, IList<ILiveStream> currentLiveStreams, CancellationToken cancellationToken)
         {
             var tunerCount = tunerHost.TunerCount;
 
@@ -86,6 +90,7 @@ namespace Jellyfin.LiveTv.TunerHosts
 
                 if (liveStreams.Count() >= tunerCount)
                 {
+                    Logger.LogError("M3U simultaneous stream limit has been reached, current streams: {0}", liveStreams);
                     throw new LiveTvConflictException("M3U simultaneous stream limit has been reached.");
                 }
             }
@@ -96,34 +101,21 @@ namespace Jellyfin.LiveTv.TunerHosts
 
             if (tunerHost.AllowStreamSharing && mediaSource.Protocol == MediaProtocol.Http && !mediaSource.RequiresLooping)
             {
-                var extension = Path.GetExtension(new UriBuilder(mediaSource.Path).Path);
-
-                if (string.IsNullOrEmpty(extension))
-                {
-                    try
-                    {
-                        using var message = new HttpRequestMessage(HttpMethod.Head, mediaSource.Path);
-                        using var response = await _httpClientFactory.CreateClient(NamedClient.Default)
-                            .SendAsync(message, cancellationToken)
-                            .ConfigureAwait(false);
-
-                        if (response.IsSuccessStatusCode)
-                        {
-                            if (_mimeTypesCanShareHttpStream.Contains(response.Content.Headers.ContentType?.MediaType, StringComparison.OrdinalIgnoreCase))
-                            {
-                                return new SharedHttpStream(mediaSource, tunerHost, streamId, FileSystem, _httpClientFactory, Logger, Config, _appHost, _streamHelper);
-                            }
-                        }
-                    }
-                    catch (Exception)
-                    {
-                        Logger.LogWarning("HEAD request to check MIME type failed, shared stream disabled");
-                    }
-                }
-                else if (_extensionsCanShareHttpStream.Contains(extension, StringComparison.OrdinalIgnoreCase))
-                {
-                    return new SharedHttpStream(mediaSource, tunerHost, streamId, FileSystem, _httpClientFactory, Logger, Config, _appHost, _streamHelper);
-                }
+                /* pointless to check the media type here if it would just fail to open if its disallowed */
+                return new SharedBufferedHttpStream(
+                        mediaSource,
+                        tunerHost,
+                        streamId,
+                        !string.IsNullOrWhiteSpace(request.SessionId) ? request.SessionId : "",
+                        FileSystem,
+                        Logger,
+                        Config,
+                        _appHost,
+                        _streamHelper,
+                        _mediaEncoder,
+                        Config.ApplicationPaths,
+                        Config,
+                        _httpClientFactory);
             }
 
             return new LiveStream(mediaSource, tunerHost, FileSystem, Logger, Config, _streamHelper);
@@ -169,6 +161,7 @@ namespace Jellyfin.LiveTv.TunerHosts
             var mediaSource = new MediaSourceInfo
             {
                 Path = path,
+                BackupPaths = channel.BackupPaths,
                 Protocol = protocol,
                 MediaStreams = new MediaStream[]
                 {

@@ -98,6 +98,8 @@ namespace MediaBrowser.MediaEncoding.Encoder
 
         private Version _ffmpegVersion = null;
         private string _ffmpegPath = string.Empty;
+        private string _mpegtsProxyPath = string.Empty;
+        private static string _mpegtsProxyVariable = "MPEGTS_PROXY_PATH";
         private string _ffprobePath;
         private int _threads;
 
@@ -128,6 +130,9 @@ namespace MediaBrowser.MediaEncoding.Encoder
 
         /// <inheritdoc />
         public string EncoderPath => _ffmpegPath;
+
+        /// <inheritdoc />
+        public string MpegtsProxyPath => _mpegtsProxyPath;
 
         /// <inheritdoc />
         public string ProbePath => _ffprobePath;
@@ -259,6 +264,87 @@ namespace MediaBrowser.MediaEncoding.Encoder
 
             _logger.LogInformation("FFmpeg: {FfmpegPath}", _ffmpegPath ?? string.Empty);
             return !string.IsNullOrWhiteSpace(ffmpegPath);
+        }
+
+        /// <summary>
+        /// Run at startup.
+        /// Updates global variables mpegtsProxyPath is path is present.
+        /// </summary>
+        public void UpdateMpegtsProxyPath()
+        {
+            var mpegtsProxyPath = Environment.GetEnvironmentVariable(_mpegtsProxyVariable);
+
+            if (!string.IsNullOrEmpty(mpegtsProxyPath) && Directory.Exists(mpegtsProxyPath))
+            {
+                mpegtsProxyPath = Path.Combine(mpegtsProxyPath, "mpegtsProxy");
+                if (!File.Exists(mpegtsProxyPath))
+                {
+                    mpegtsProxyPath = string.Empty;
+                }
+            } else {
+                mpegtsProxyPath = string.Empty;
+            }
+
+            _mpegtsProxyPath = mpegtsProxyPath;
+        }
+
+        /// <summary>
+        /// Triggered from the Settings > Transcoding UI page when users submits Custom FFmpeg path to use.
+        /// Only write the new path to xml if it exists.  Do not perform validation checks on ffmpeg here.
+        /// </summary>
+        /// <param name="path">The path.</param>
+        /// <param name="pathType">The path type.</param>
+        public void UpdateEncoderPath(string path, string pathType)
+        {
+            var config = _configurationManager.GetEncodingOptions();
+
+            // Filesystem may not be case insensitive, but EncoderAppPathDisplay should always point to a valid file?
+            if (string.IsNullOrEmpty(config.EncoderAppPath)
+                && string.Equals(config.EncoderAppPathDisplay, path, StringComparison.OrdinalIgnoreCase))
+            {
+                _logger.LogDebug("Existing ffmpeg path is empty and the new path is the same as {EncoderAppPathDisplay}. Skipping", nameof(config.EncoderAppPathDisplay));
+                return;
+            }
+
+            string newPath;
+
+            _logger.LogInformation("Attempting to update encoder path to {Path}. pathType: {PathType}", path ?? string.Empty, pathType ?? string.Empty);
+
+            if (!string.Equals(pathType, "custom", StringComparison.OrdinalIgnoreCase))
+            {
+                throw new ArgumentException("Unexpected pathType value");
+            }
+
+            if (string.IsNullOrWhiteSpace(path))
+            {
+                // User had cleared the custom path in UI
+                newPath = string.Empty;
+            }
+            else
+            {
+                if (Directory.Exists(path))
+                {
+                    // Given path is directory, so resolve down to filename
+                    newPath = GetEncoderPathFromDirectory(path, "ffmpeg");
+                }
+                else
+                {
+                    newPath = path;
+                }
+
+                if (!new EncoderValidator(_logger, newPath).ValidateVersion())
+                {
+                    throw new ResourceNotFoundException();
+                }
+            }
+
+            // Write the new ffmpeg path to the xml as <EncoderAppPath>
+            // This ensures its not lost on next startup
+            config.EncoderAppPath = newPath;
+            _configurationManager.SaveConfiguration("encoding", config);
+
+            // Trigger SetFFmpegPath so we validate the new path and setup probe path
+            SetFFmpegPath();
         }
 
         /// <summary>

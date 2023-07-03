@@ -408,6 +408,7 @@ namespace Emby.Server.Implementations
             {
                 throw new FfmpegException("Failed to find valid ffmpeg");
             }
+            Resolve<IMediaEncoder>().UpdateMpegtsProxyPath();
 
             Logger.LogInformation("ServerId: {ServerId}", SystemId);
             Logger.LogInformation("Core startup complete");
