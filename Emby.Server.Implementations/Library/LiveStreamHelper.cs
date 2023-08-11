@@ -70,8 +70,6 @@ namespace Emby.Server.Implementations.Library
                     await Task.Delay(delayMs, cancellationToken).ConfigureAwait(false);
                 }
 
-                mediaSource.AnalyzeDurationMs = 3000;
-
                 mediaInfo = await _mediaEncoder.GetMediaInfo(
                     new MediaInfoRequest
                     {
@@ -167,8 +165,6 @@ namespace Emby.Server.Implementations.Library
                 // This is coming up false and preventing stream copy
                 videoStream.IsAVC = null;
             }
-
-            mediaSource.AnalyzeDurationMs = 3000;
 
             // Try to estimate this
             mediaSource.InferTotalBitrate(true);

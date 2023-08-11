@@ -32,13 +32,13 @@ ARG LEVEL_ZERO_VERSION=1.3.22549
 # mesa-va-drivers: needed for AMD VAAPI. Mesa >= 20.1 is required for HEVC transcoding.
 # curl: healthcheck
 RUN apt-get update \
- && apt-get install --no-install-recommends --no-install-suggests -y ca-certificates gnupg wget curl \
+ && apt-get install --no-install-recommends --no-install-suggests -y ca-certificates gnupg wget curl gpg \
  && wget -O - https://repo.jellyfin.org/jellyfin_team.gpg.key | apt-key add - \
  && echo "deb [arch=$( dpkg --print-architecture )] https://repo.jellyfin.org/$( awk -F'=' '/^ID=/{ print $NF }' /etc/os-release ) $( awk -F'=' '/^VERSION_CODENAME=/{ print $NF }' /etc/os-release ) main" | tee /etc/apt/sources.list.d/jellyfin.list \
  && apt-get update \
  && apt-get install --no-install-recommends --no-install-suggests -y \
    mesa-va-drivers \
-   jellyfin-ffmpeg5 \
+#   jellyfin-ffmpeg6 \ #disable for external FFMPEG
    openssl \
    locales \
 # Intel VAAPI Tone mapping dependencies:
@@ -49,7 +49,7 @@ RUN apt-get update \
  && wget https://github.com/intel/compute-runtime/releases/download/${NEO_VERSION}/intel-gmmlib_${GMMLIB_VERSION}_amd64.deb \
  && wget https://github.com/intel/intel-graphics-compiler/releases/download/igc-${IGC_VERSION}/intel-igc-core_${IGC_VERSION}_amd64.deb \
  && wget https://github.com/intel/intel-graphics-compiler/releases/download/igc-${IGC_VERSION}/intel-igc-opencl_${IGC_VERSION}_amd64.deb \
- && wget https://github.com/intel/compute-runtime/releases/download/${NEO_VERSION}/intel-opencl-icd_${NEO_VERSION}_amd64.deb \
+# && wget https://github.com/intel/compute-runtime/releases/download/${NEO_VERSION}/intel-opencl-icd_${NEO_VERSION}_amd64.deb \
  && wget https://github.com/intel/compute-runtime/releases/download/${NEO_VERSION}/intel-level-zero-gpu_${LEVEL_ZERO_VERSION}_amd64.deb \
  && dpkg -i *.deb \
  && cd .. \
@@ -60,7 +60,24 @@ RUN apt-get update \
  && rm -rf /var/lib/apt/lists/* \
  && mkdir -p /cache /config /media \
  && chmod 777 /cache /config /media \
- && sed -i -e 's/# en_US.UTF-8 UTF-8/en_US.UTF-8 UTF-8/' /etc/locale.gen && locale-gen
+ && sed -i -e 's/# en_US.UTF-8 UTF-8/en_US.UTF-8 UTF-8/' /etc/locale.gen && locale-gen \
+#AMD VAAIP Tone mapping dependencies:
+ && mkdir -p /etc/apt/keyrings \
+ && curl -fsSL https://repo.radeon.com/rocm/rocm.gpg.key | gpg --dearmor -o /etc/apt/keyrings/rocm.gpg \
+ && echo 'Types: deb\n\
+URIs: https://repo.radeon.com/rocm/apt/latest\n\
+Suites: ubuntu\n\
+Components: main\n\
+Architectures: amd64\n\
+Signed-By: /etc/apt/keyrings/rocm.gpg' >> /etc/apt/sources.list.d/rocm.sources \
+ && cat /etc/apt/sources.list.d/rocm.sources \
+ && apt-get -y update \
+ && apt-get -y install rocm-opencl-runtime
+
+# ffmpeg local
+RUN mkdir -p /repo/ffmpeg
+COPY ./ffmpeg /repo/ffmpeg
+RUN apt-get install -y /repo/ffmpeg/jellyfin-ffmpeg6_6.0-4-kinetic_amd64.deb
 
 # ENV DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1
 ENV LC_ALL en_US.UTF-8

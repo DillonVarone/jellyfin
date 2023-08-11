@@ -21,6 +21,7 @@ using MediaBrowser.Controller.Library;
 using MediaBrowser.Controller.MediaEncoding;
 using MediaBrowser.Model.Dto;
 using MediaBrowser.Model.IO;
+using MediaBrowser.Model.MediaInfo;
 using Microsoft.Extensions.Logging;
 
 namespace Emby.Server.Implementations.LiveTv.EmbyTV
@@ -172,6 +173,8 @@ namespace Emby.Server.Implementations.LiveTv.EmbyTV
             if (mediaSource.RequiresLooping)
             {
                 inputModifier += " -stream_loop -1 -reconnect_at_eof 1 -reconnect_streamed 1 -reconnect_delay_max 2";
+            } else if (mediaSource.Protocol == MediaProtocol.Http) {
+                inputModifier += " -reconnect_on_network_error 1 -reconnect_on_http_error 1 -reconnect_at_eof 1 -reconnect_streamed 1 -reconnect_delay_max 2";
             }
 
             var analyzeDurationSeconds = 5;

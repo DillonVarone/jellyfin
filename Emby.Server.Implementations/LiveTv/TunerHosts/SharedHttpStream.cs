@@ -39,6 +39,7 @@ namespace Emby.Server.Implementations.LiveTv.TunerHosts
             _appHost = appHost;
             OriginalStreamId = originalStreamId;
             EnableStreamSharing = true;
+            IsEndless = true;
         }
 
         public override async Task Open(CancellationToken openCancellationToken)
@@ -108,15 +109,49 @@ namespace Emby.Server.Implementations.LiveTv.TunerHosts
                     try
                     {
                         Logger.LogInformation("Beginning {StreamType} stream to {FilePath}", GetType().Name, TempFilePath);
-                        using var message = response;
-                        await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
+
+                        bool shouldContinue = true;
                         await using var fileStream = new FileStream(TempFilePath, FileMode.Create, FileAccess.Write, FileShare.Read, IODefaults.FileStreamBufferSize, FileOptions.Asynchronous);
-                        await StreamHelper.CopyToAsync(
-                            stream,
-                            fileStream,
-                            IODefaults.CopyToBufferSize,
-                            () => Resolve(openTaskCompletionSource),
-                            cancellationToken).ConfigureAwait(false);
+                        while (shouldContinue)
+                        {
+                            using var message = response;
+                            await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
+                            fileStream.Seek(0, SeekOrigin.Begin);
+                            await StreamHelper.CopyToAsync(
+                                stream,
+                                fileStream,
+                                IODefaults.CopyToBufferSize,
+                                () => Resolve(openTaskCompletionSource),
+                                cancellationToken).ConfigureAwait(false);
+
+                            if (IsEndless)
+                            {
+                                response = await _httpClientFactory.CreateClient(NamedClient.Default)
+                                    .GetAsync(OriginalMediaSource.Path, HttpCompletionOption.ResponseHeadersRead, CancellationToken.None)
+                                    .ConfigureAwait(false);
+
+                                var contentType = response.Content.Headers.ContentType?.ToString() ?? string.Empty;
+                                if (contentType.Contains("matroska", StringComparison.OrdinalIgnoreCase)
+                                    || contentType.Contains("mp4", StringComparison.OrdinalIgnoreCase)
+                                    || contentType.Contains("dash", StringComparison.OrdinalIgnoreCase)
+                                    || contentType.Contains("mpegURL", StringComparison.OrdinalIgnoreCase)
+                                    || contentType.Contains("text/", StringComparison.OrdinalIgnoreCase))
+                                {
+                                    // Close the stream without any sharing features
+                                    response.Dispose();
+                                    shouldContinue = false;
+                                }
+                                else
+                                {
+                                    Logger.LogInformation("DILLON DEBUG: {StreamType} stream to {FilePath} ended prematurely, attempting restart", GetType().Name, TempFilePath);
+                                }
+                            }
+                            else
+                            {
+                                shouldContinue = false;
+                            }
+                        }
+
                     }
                     catch (OperationCanceledException ex)
                     {
@@ -133,6 +168,8 @@ namespace Emby.Server.Implementations.LiveTv.TunerHosts
 
                     EnableStreamSharing = false;
                     await DeleteTempFiles(TempFilePath).ConfigureAwait(false);
+
+                    Logger.LogInformation("Copying of {StreamType} to {FilePath} ended", GetType().Name, TempFilePath);
                 },
                 CancellationToken.None);
         }

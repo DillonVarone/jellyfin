@@ -255,7 +255,7 @@ public class TranscodingJobHelper : IDisposable
         {
             foreach (var job in jobs)
             {
-                yield return KillTranscodingJob(job, false, deleteFiles);
+                yield return KillTranscodingJob(job, true, deleteFiles);
             }
         }
 
@@ -339,6 +339,7 @@ public class TranscodingJobHelper : IDisposable
             try
             {
                 await _mediaSourceManager.CloseLiveStream(job.LiveStreamId).ConfigureAwait(false);
+                job.LiveStreamId = string.Empty;
             }
             catch (Exception ex)
             {
@@ -448,6 +449,7 @@ public class TranscodingJobHelper : IDisposable
         int? bitRate)
     {
         var ticks = transcodingPosition?.Ticks;
+        var liveStreamId = string.Empty;
 
         if (job is not null)
         {
@@ -456,6 +458,11 @@ public class TranscodingJobHelper : IDisposable
             job.TranscodingPositionTicks = ticks;
             job.BytesTranscoded = bytesTranscoded;
             job.BitRate = bitRate;
+
+            if (!job.HasExited)
+            {
+                liveStreamId = job.LiveStreamId;
+            }
         }
 
         var deviceId = state.Request.DeviceId;
@@ -485,6 +492,7 @@ public class TranscodingJobHelper : IDisposable
                 IsAudioDirect = EncodingHelper.IsCopyCodec(state.OutputAudioCodec),
                 IsVideoDirect = EncodingHelper.IsCopyCodec(state.OutputVideoCodec),
                 HardwareAccelerationType = hardwareAccelerationType,
+                LiveStreamId = liveStreamId,
                 TranscodeReasons = state.TranscodeReasons
             });
         }
@@ -648,6 +656,13 @@ public class TranscodingJobHelper : IDisposable
         }
         else if (transcodingJob.ExitCode != 0)
         {
+            // need to close livestream if it exists
+            if (!string.IsNullOrWhiteSpace(transcodingJob.LiveStreamId))
+            {
+                await _mediaSourceManager.CloseLiveStream(transcodingJob.LiveStreamId).ConfigureAwait(false);
+                transcodingJob.LiveStreamId = string.Empty;
+            }
+
             throw new FfmpegException(string.Format(CultureInfo.InvariantCulture, "FFmpeg exited with code {0}", transcodingJob.ExitCode));
         }
 
@@ -776,7 +791,7 @@ public class TranscodingJobHelper : IDisposable
     /// <param name="process">The process.</param>
     /// <param name="job">The job.</param>
     /// <param name="state">The state.</param>
-    private void OnFfMpegProcessExited(Process process, TranscodingJobDto job, StreamState state)
+    private async void OnFfMpegProcessExited(Process process, TranscodingJobDto job, StreamState state)
     {
         job.HasExited = true;
         job.ExitCode = process.ExitCode;
@@ -793,6 +808,12 @@ public class TranscodingJobHelper : IDisposable
         else
         {
             _logger.LogError("FFmpeg exited with code {0}", process.ExitCode);
+        }
+
+        // cleanup before disposing the job
+        if (job.CancellationTokenSource?.IsCancellationRequested == false)
+        {
+            await KillTranscodingJob(job, true, path => true).ConfigureAwait(false);
         }
 
         job.Dispose();
@@ -851,6 +872,7 @@ public class TranscodingJobHelper : IDisposable
 
         if (string.IsNullOrWhiteSpace(job.PlaySessionId) || job.Type == TranscodingJobType.Progressive)
         {
+            _logger.LogInformation("StopKillTimer - {0} stopped", job.LiveStreamId);
             job.StopKillTimer();
         }
     }

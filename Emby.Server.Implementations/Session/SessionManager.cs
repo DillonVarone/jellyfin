@@ -318,8 +318,25 @@ namespace Emby.Server.Implementations.Session
             {
                 var key = GetSessionKey(session.Client, session.DeviceId);
 
+                try
+                {
+                    await OnPlaybackStopped(new PlaybackStopInfo
+                    {
+                        Item = session.NowPlayingItem,
+                        ItemId = session.NowPlayingItem is null ? Guid.Empty : session.NowPlayingItem.Id,
+                        SessionId = session.Id,
+                        MediaSourceId = session.PlayState?.MediaSourceId,
+                        PositionTicks = session.PlayState?.PositionTicks
+                    }).ConfigureAwait(false);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Error calling OnPlaybackStopped");
+                }
+
                 _activeConnections.TryRemove(key, out _);
-                if (!string.IsNullOrEmpty(session.PlayState?.LiveStreamId))
+
+                if (!string.IsNullOrEmpty(session.PlayState?.LiveStreamId) && string.IsNullOrEmpty(session.TranscodingInfo?.LiveStreamId))
                 {
                     await _mediaSourceManager.CloseLiveStream(session.PlayState.LiveStreamId).ConfigureAwait(false);
                 }
@@ -597,7 +614,8 @@ namespace Emby.Server.Implementations.Session
                     isStreamActive[streamIdx] = false;
                     foreach (SessionInfo session in Sessions)
                     {
-                        if (!string.IsNullOrEmpty(session.PlayState?.LiveStreamId) && session.PlayState.LiveStreamId == liveStream.Key)
+                        if (!string.IsNullOrEmpty(session.PlayState?.LiveStreamId) && session.PlayState.LiveStreamId == liveStream.Key ||
+                            !string.IsNullOrEmpty(session.TranscodingInfo?.LiveStreamId) && session.TranscodingInfo.LiveStreamId == liveStream.Key)
                         {
                             isStreamActive[streamIdx] = true;
                             break;
@@ -617,7 +635,8 @@ namespace Emby.Server.Implementations.Session
                 {
                     foreach (SessionInfo session in Sessions)
                     {
-                        if (!string.IsNullOrEmpty(session.PlayState?.LiveStreamId) && session.PlayState.LiveStreamId == liveStream.Key)
+                        if (!string.IsNullOrEmpty(session.PlayState?.LiveStreamId) && session.PlayState.LiveStreamId == liveStream.Key ||
+                            !string.IsNullOrEmpty(session.TranscodingInfo?.LiveStreamId) && session.TranscodingInfo.LiveStreamId == liveStream.Key)
                         {
                             isStreamActive[streamIdx] = true;
                             break;
@@ -805,6 +824,19 @@ namespace Emby.Server.Implementations.Session
 
             var session = GetSession(info.SessionId);
 
+            if (!session.SessionControllers.Any(i => i.IsSessionActive))
+            {
+                try
+                {
+                    ReportSessionEnded(session.Id);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Error reporting session ended");
+                }
+                return;
+            }
+
             var libraryItem = info.ItemId.Equals(default)
                 ? null
                 : GetNowPlayingItem(session, info.ItemId);
@@ -964,7 +996,15 @@ namespace Emby.Server.Implementations.Session
 
                     if (libraryItem is IHasMediaSources)
                     {
-                        mediaSource = await GetMediaSource(libraryItem, info.MediaSourceId, info.LiveStreamId).ConfigureAwait(false);
+                        try
+                        {
+                            mediaSource = await GetMediaSource(libraryItem, info.MediaSourceId, info.LiveStreamId).ConfigureAwait(false);
+                        }
+                        catch (ResourceNotFoundException ex)
+                        {
+                            _logger.LogError(ex, "Media no longer exists");
+                        }
+
                     }
 
                     info.Item = GetItemInfo(libraryItem, mediaSource);
@@ -990,22 +1030,6 @@ namespace Emby.Server.Implementations.Session
             if (info.NowPlayingQueue is not null)
             {
                 session.NowPlayingQueue = info.NowPlayingQueue;
-            }
-
-            if (!string.IsNullOrEmpty(info.LiveStreamId))
-            {
-                try
-                {
-                    await _mediaSourceManager.CloseLiveStream(info.LiveStreamId).ConfigureAwait(false);
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogError(ex, "Error closing live stream");
-                }
-            }
-            else
-            {
-               await CleanupDanglingStreams().ConfigureAwait(false);
             }
 
             session.PlaylistItemId = info.PlaylistItemId;

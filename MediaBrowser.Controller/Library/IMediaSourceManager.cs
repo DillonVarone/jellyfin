@@ -86,6 +86,14 @@ namespace MediaBrowser.Controller.Library
         /// Opens the media source.
         /// </summary>
         /// <param name="request">The request.</param>
+        /// <param name="allowCleanup">Allow session manager to close this stream if unused.</param>
+        /// <param name="cancellationToken">The cancellation token.</param>
+        /// <returns>Task&lt;MediaSourceInfo&gt;.</returns>
+        Task<LiveStreamResponse> OpenLiveStream(LiveStreamRequest request, bool allowCleanup, CancellationToken cancellationToken);
+        /// <summary>
+        /// Opens the media source.
+        /// </summary>
+        /// <param name="request">The request.</param>
         /// <param name="cancellationToken">The cancellation token.</param>
         /// <returns>Task&lt;MediaSourceInfo&gt;.</returns>
         Task<LiveStreamResponse> OpenLiveStream(LiveStreamRequest request, CancellationToken cancellationToken);

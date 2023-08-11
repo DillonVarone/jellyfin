@@ -17,6 +17,7 @@ using MediaBrowser.Controller;
 using MediaBrowser.Controller.Configuration;
 using MediaBrowser.Controller.Library;
 using MediaBrowser.Controller.LiveTv;
+using MediaBrowser.Controller.MediaEncoding;
 using MediaBrowser.Model.Dto;
 using MediaBrowser.Model.Entities;
 using MediaBrowser.Model.IO;
@@ -34,7 +35,7 @@ namespace Emby.Server.Implementations.LiveTv.TunerHosts
         {
             ".mkv",
             ".mp4",
-            ".m3u8",
+            //".m3u8",
             ".mpd"
         };
 
@@ -43,6 +44,7 @@ namespace Emby.Server.Implementations.LiveTv.TunerHosts
         private readonly INetworkManager _networkManager;
         private readonly IMediaSourceManager _mediaSourceManager;
         private readonly IStreamHelper _streamHelper;
+        private readonly IMediaEncoder _mediaEncoder;
 
         public M3UTunerHost(
             IServerConfigurationManager config,
@@ -53,7 +55,8 @@ namespace Emby.Server.Implementations.LiveTv.TunerHosts
             IServerApplicationHost appHost,
             INetworkManager networkManager,
             IStreamHelper streamHelper,
-            IMemoryCache memoryCache)
+            IMemoryCache memoryCache,
+            IMediaEncoder mediaEncoder)
             : base(config, logger, fileSystem, memoryCache)
         {
             _httpClientFactory = httpClientFactory;
@@ -61,6 +64,7 @@ namespace Emby.Server.Implementations.LiveTv.TunerHosts
             _networkManager = networkManager;
             _mediaSourceManager = mediaSourceManager;
             _streamHelper = streamHelper;
+            _mediaEncoder = mediaEncoder;
         }
 
         public override string Type => "m3u";
@@ -122,7 +126,19 @@ namespace Emby.Server.Implementations.LiveTv.TunerHosts
 
                 if (!_disallowedSharedStreamExtensions.Contains(extension, StringComparison.OrdinalIgnoreCase))
                 {
-                    return new SharedHttpStream(mediaSource, tunerHost, streamId, FileSystem, _httpClientFactory, Logger, Config, _appHost, _streamHelper);
+                    return new SharedBufferedHttpStream(
+                        mediaSource,
+                        tunerHost,
+                        streamId,
+                        FileSystem,
+                        Logger,
+                        Config,
+                        _appHost,
+                        _streamHelper,
+                        _mediaEncoder,
+                        Config.ApplicationPaths,
+                        Config,
+                        _httpClientFactory);
                 }
             }
 

@@ -75,6 +75,8 @@ namespace Emby.Server.Implementations.LiveTv.TunerHosts
 
         public bool AllowCleanup { get; set; }
 
+        public bool IsEndless { get; set; }
+
         protected void SetTempFilePath(string extension)
         {
             TempFilePath = Path.Combine(_configurationManager.GetTranscodePath(), UniqueId + "." + extension);
@@ -86,7 +88,7 @@ namespace Emby.Server.Implementations.LiveTv.TunerHosts
             return Task.CompletedTask;
         }
 
-        public Task Close()
+        public virtual Task Close()
         {
             EnableStreamSharing = false;
 
