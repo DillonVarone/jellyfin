@@ -85,18 +85,41 @@ namespace Emby.Server.Implementations.LiveTv.TunerHosts
             var typeName = GetType().Name;
             Logger.LogInformation("Opening {StreamType} Live stream from {Url}", typeName, url);
 
-            Logger.LogInformation("DILLON DEBUG Opening mediasourceid: {0}", MediaSource.Id);
+            var success = false;
+            var backupIndex = 0;
+            while (!string.IsNullOrEmpty(url) && !success) {
+                try {
+                    using var response = await _httpClientFactory.CreateClient(NamedClient.Default)
+                        .GetAsync(url, HttpCompletionOption.ResponseHeadersRead, CancellationToken.None)
+                        .ConfigureAwait(false);
 
-            var response = await _httpClientFactory.CreateClient(NamedClient.Default)
-                .GetAsync(url, HttpCompletionOption.ResponseHeadersRead, CancellationToken.None)
-                .ConfigureAwait(false);
+                    if (response.IsSuccessStatusCode) {
+                        var contentType = response.Content.Headers.ContentType?.ToString() ?? string.Empty;
+                        if (contentType.Contains("x-mpegurl", StringComparison.OrdinalIgnoreCase))
+                        {
+                            _isHLS = true;
+                        }
+                        success = true;
+                    }
+                } catch (HttpRequestException ex) {
+                    Logger.LogError(ex, "Error checking stream {Url}", url);
+                }
 
-            var contentType = response.Content.Headers.ContentType?.ToString() ?? string.Empty;
-            if (contentType.Contains("x-mpegurl", StringComparison.OrdinalIgnoreCase))
-            {
-                _isHLS = true;
+                if (!success) {
+                    // try backup url
+                    if (mediaSource.BackupPaths.Count > backupIndex + 1) {
+                        url = mediaSource.BackupPaths[backupIndex];
+                        backupIndex++;
+                    } else {
+                        url = "";
+                    }
+                }
             }
-            response.Dispose();
+
+            if (!success) {
+                // default behavior on failure to just try original source
+                url = mediaSource.Path;
+            }
 
             // if (_isHLS)
             // {
@@ -120,7 +143,7 @@ namespace Emby.Server.Implementations.LiveTv.TunerHosts
                 RedirectStandardInput = true,
 
                 FileName = _mediaEncoder.EncoderPath,
-                Arguments = GetCommandLineArgs(mediaSource),
+                Arguments = GetCommandLineArgs(mediaSource, url),
 
                 WindowStyle = ProcessWindowStyle.Hidden,
                 ErrorDialog = false
@@ -180,7 +203,7 @@ namespace Emby.Server.Implementations.LiveTv.TunerHosts
             MediaSource.Protocol = MediaProtocol.Http;
         }
 
-        private string GetCommandLineArgs(MediaSourceInfo mediaSource)
+        private string GetCommandLineArgs(MediaSourceInfo mediaSource, string url)
         {
             var inputFlags = new List<string>();
 
@@ -205,7 +228,7 @@ namespace Emby.Server.Implementations.LiveTv.TunerHosts
                 inputModifier += " -fflags " + string.Join(string.Empty, inputFlags);
             }
 
-            inputModifier += " -reconnect 1 -reconnect_on_network_error 1 -reconnect_on_http_error 1 -reconnect_streamed 1 -reconnect_delay_max 2";
+            inputModifier += " -reconnect 1 -reconnect_on_network_error 1 -reconnect_on_http_error 1 -reconnect_streamed 1 -reconnect_delay_max 3";
 
             if (!_isHLS)
             {
@@ -238,7 +261,7 @@ namespace Emby.Server.Implementations.LiveTv.TunerHosts
             var commandLineArgs = string.Format(
                 CultureInfo.InvariantCulture,
                 "-loglevel 48 -i \"{0}\" {2} -threads {3}{4} -y \"{1}\"",
-                mediaSource.Path,
+                url,
                 TempFilePath.Replace("\"", "\\\"", StringComparison.Ordinal), // Escape quotes in filename
                 outputArgs,
                 threads,

@@ -7,6 +7,7 @@ using Jellyfin.Api.Helpers;
 using Jellyfin.Api.ModelBinders;
 using Jellyfin.Data.Entities;
 using MediaBrowser.Controller.Entities;
+using MediaBrowser.Common.Extensions;
 using MediaBrowser.Controller.Library;
 using MediaBrowser.Controller.Session;
 using MediaBrowser.Model.Dto;
@@ -173,8 +174,16 @@ public class PlaystateController : BaseJellyfinApiController
     public async Task<ActionResult> ReportPlaybackProgress([FromBody] PlaybackProgressInfo playbackProgressInfo)
     {
         playbackProgressInfo.PlayMethod = ValidatePlayMethod(playbackProgressInfo.PlayMethod, playbackProgressInfo.PlaySessionId);
-        playbackProgressInfo.SessionId = await RequestHelpers.GetSessionId(_sessionManager, _userManager, HttpContext).ConfigureAwait(false);
-        await _sessionManager.OnPlaybackProgress(playbackProgressInfo).ConfigureAwait(false);
+        try
+        {
+            playbackProgressInfo.SessionId = await RequestHelpers.GetSessionId(_sessionManager, _userManager, HttpContext).ConfigureAwait(false);
+            await _sessionManager.OnPlaybackProgress(playbackProgressInfo).ConfigureAwait(false);
+        }
+        catch (ResourceNotFoundException ex)
+        {
+            _logger.LogError(ex, "Session was not found for some reason.");
+        }
+
         return NoContent();
     }
 

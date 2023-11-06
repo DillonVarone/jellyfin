@@ -1717,8 +1717,8 @@ namespace MediaBrowser.Controller.Entities
 
                 if (itemByPath is null)
                 {
-                    Logger.LogWarning("Unable to find linked item at path {0}", info.Path);
-                }
+                                        Logger.LogWarning("Unable to find linked item at path {0}", info.Path);
+                                    }
 
                 return itemByPath;
             }

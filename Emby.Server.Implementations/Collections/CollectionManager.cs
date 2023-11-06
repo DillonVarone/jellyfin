@@ -6,15 +6,18 @@ using System.Threading;
 using System.Threading.Tasks;
 using Jellyfin.Data.Entities;
 using MediaBrowser.Common.Configuration;
+using MediaBrowser.Controller.Authentication;
 using MediaBrowser.Controller.Collections;
 using MediaBrowser.Controller.Entities;
 using MediaBrowser.Controller.Entities.Movies;
 using MediaBrowser.Controller.Library;
 using MediaBrowser.Controller.Providers;
+using MediaBrowser.MediaEncoding.BdInfo;
 using MediaBrowser.Model.Configuration;
 using MediaBrowser.Model.Entities;
 using MediaBrowser.Model.Globalization;
 using MediaBrowser.Model.IO;
+using MediaBrowser.Model.LiveTv;
 using Microsoft.Extensions.Logging;
 
 namespace Emby.Server.Implementations.Collections
@@ -117,7 +120,8 @@ namespace Emby.Server.Implementations.Collections
             return EnsureLibraryFolder(GetCollectionsFolderPath(), createIfNeeded);
         }
 
-        private IEnumerable<BoxSet> GetCollections(User user)
+        /// <inheritdoc />
+        public IEnumerable<BoxSet> GetCollections(User user)
         {
             var folder = GetCollectionsFolder(false).GetAwaiter().GetResult();
 

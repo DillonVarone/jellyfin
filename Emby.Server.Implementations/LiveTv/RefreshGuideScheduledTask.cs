@@ -15,7 +15,7 @@ namespace Emby.Server.Implementations.LiveTv
     public class RefreshGuideScheduledTask : IScheduledTask, IConfigurableScheduledTask
     {
         private readonly ILiveTvManager _liveTvManager;
-        private readonly IConfigurationManager _config;
+                private readonly IConfigurationManager _config;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="RefreshGuideScheduledTask"/> class.

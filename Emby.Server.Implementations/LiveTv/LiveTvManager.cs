@@ -17,6 +17,7 @@ using MediaBrowser.Common.Configuration;
 using MediaBrowser.Common.Extensions;
 using MediaBrowser.Common.Progress;
 using MediaBrowser.Controller.Channels;
+using MediaBrowser.Controller.Collections;
 using MediaBrowser.Controller.Configuration;
 using MediaBrowser.Controller.Dto;
 using MediaBrowser.Controller.Entities;
@@ -46,6 +47,8 @@ namespace Emby.Server.Implementations.LiveTv
 
         private const string EtagKey = "ProgramEtag";
 
+        private const string TvCollectionPrefix = "TV -";
+
         private readonly IServerConfigurationManager _config;
         private readonly ILogger<LiveTvManager> _logger;
         private readonly IItemRepository _itemRepo;
@@ -58,6 +61,8 @@ namespace Emby.Server.Implementations.LiveTv
         private readonly IFileSystem _fileSystem;
         private readonly IChannelManager _channelManager;
         private readonly LiveTvDtoService _tvDtoService;
+
+        private readonly ICollectionManager _collectionManager;
 
         private ILiveTvService[] _services = Array.Empty<ILiveTvService>();
         private ITunerHost[] _tunerHosts = Array.Empty<ITunerHost>();
@@ -75,7 +80,8 @@ namespace Emby.Server.Implementations.LiveTv
             ILocalizationManager localization,
             IFileSystem fileSystem,
             IChannelManager channelManager,
-            LiveTvDtoService liveTvDtoService)
+            LiveTvDtoService liveTvDtoService,
+            ICollectionManager collectionManager)
         {
             _config = config;
             _logger = logger;
@@ -89,6 +95,7 @@ namespace Emby.Server.Implementations.LiveTv
             _userDataManager = userDataManager;
             _channelManager = channelManager;
             _tvDtoService = liveTvDtoService;
+            _collectionManager = collectionManager;
         }
 
         public event EventHandler<GenericEventArgs<TimerEventInfo>> SeriesTimerCancelled;
@@ -494,18 +501,15 @@ namespace Emby.Server.Implementations.LiveTv
 
             item.Name = channelInfo.Name;
 
-            if (!item.HasImage(ImageType.Primary))
+            if (!string.IsNullOrWhiteSpace(channelInfo.ImagePath))
             {
-                if (!string.IsNullOrWhiteSpace(channelInfo.ImagePath))
-                {
-                    item.SetImagePath(ImageType.Primary, channelInfo.ImagePath);
-                    forceUpdate = true;
-                }
-                else if (!string.IsNullOrWhiteSpace(channelInfo.ImageUrl))
-                {
-                    item.SetImagePath(ImageType.Primary, channelInfo.ImageUrl);
-                    forceUpdate = true;
-                }
+                item.SetImagePath(ImageType.Primary, channelInfo.ImagePath);
+                forceUpdate = true;
+            }
+            else if (!string.IsNullOrWhiteSpace(channelInfo.ImageUrl))
+            {
+                item.SetImagePath(ImageType.Primary, channelInfo.ImageUrl);
+                forceUpdate = true;
             }
 
             if (isNew)
@@ -1042,6 +1046,7 @@ namespace Emby.Server.Implementations.LiveTv
 
             var newChannelIdList = new List<Guid>();
             var newProgramIdList = new List<Guid>();
+            var newServiceGroups = new Dictionary<string, Dictionary<string, List<LiveTvChannel>>>();
 
             var cleanDatabase = true;
 
@@ -1060,6 +1065,7 @@ namespace Emby.Server.Implementations.LiveTv
 
                     newChannelIdList.AddRange(idList.Item1);
                     newProgramIdList.AddRange(idList.Item2);
+                    newServiceGroups.Add(service.Name, idList.Item3);
                 }
                 catch (OperationCanceledException)
                 {
@@ -1092,6 +1098,52 @@ namespace Emby.Server.Implementations.LiveTv
                 await coreService.RefreshTimers(cancellationToken).ConfigureAwait(false);
             }
 
+            var adminUser = _userManager.Users
+                .FirstOrDefault(i => i.HasPermission(PermissionKind.IsAdministrator));
+            if (adminUser != null) {
+                // filter only the tv collections
+                var tvCollections = _collectionManager.GetCollections(adminUser).Where(i => i.Name.StartsWith(TvCollectionPrefix, StringComparison.Ordinal));
+
+                // delete old collections
+                foreach (var tvCollection in tvCollections) {
+                    _logger.LogInformation("Removing old TV collection: {0}", tvCollection.Name);
+
+                    _libraryManager.DeleteItem(tvCollection,
+                        new DeleteOptions
+                        {
+                            DeleteFileLocation = false,
+                            DeleteFromExternalProvider = false
+                        });
+                }
+            }
+
+            // add new TV collections
+            foreach (var newServiceGroup in newServiceGroups) {
+                foreach (var newChannelGroup in newServiceGroup.Value) {
+                    // create new collection based on channel group
+                    //var tvCollectionName = TvCollectionPrefix + " " + newServiceGroup.Key + " - " + newChannelGroup.Key;
+                    var tvCollectionName = TvCollectionPrefix + " " + newChannelGroup.Key;
+
+                    _logger.LogInformation("Adding new TV collection: {0}", tvCollectionName);
+
+                    var boxSet = await _collectionManager.CreateCollectionAsync(new CollectionCreationOptions
+                    {
+                        Name = tvCollectionName,
+                        ItemIdList = newChannelGroup.Value.Select(item => item.Id.ToString()).ToList(),
+                    }).ConfigureAwait(false);
+
+                    foreach (var newChannel in newChannelGroup.Value) {
+                        // find a channel for the sample artwork
+                        var thumbnailImgPath = newChannel.PrimaryImagePath;
+                        if (!string.IsNullOrEmpty(thumbnailImgPath)) {
+                            boxSet.SetImagePath(ImageType.Primary, thumbnailImgPath);
+                            await boxSet.UpdateToRepositoryAsync(ItemUpdateType.MetadataImport, cancellationToken).ConfigureAwait(false);
+                            break;
+                        }
+                    }
+                }
+            }
+
             // Load these now which will prefetch metadata
             var dtoOptions = new DtoOptions();
             var fields = dtoOptions.Fields.ToList();
@@ -1101,7 +1153,7 @@ namespace Emby.Server.Implementations.LiveTv
             progress.Report(100);
         }
 
-        private async Task<Tuple<List<Guid>, List<Guid>>> RefreshChannelsInternal(ILiveTvService service, IProgress<double> progress, CancellationToken cancellationToken)
+        private async Task<(List<Guid>, List<Guid>, Dictionary<string, List<LiveTvChannel>>)> RefreshChannelsInternal(ILiveTvService service, IProgress<double> progress, CancellationToken cancellationToken)
         {
             progress.Report(10);
 
@@ -1110,6 +1162,7 @@ namespace Emby.Server.Implementations.LiveTv
                 .ToList();
 
             var list = new List<LiveTvChannel>();
+            var tvGroupDictionary = new Dictionary<string, List<LiveTvChannel>>(StringComparer.Ordinal);
 
             var numComplete = 0;
             var parentFolder = GetInternalLiveTvFolder(cancellationToken);
@@ -1123,6 +1176,19 @@ namespace Emby.Server.Implementations.LiveTv
                     var item = await GetChannelAsync(channelInfo.Item2, channelInfo.Item1, parentFolder, cancellationToken).ConfigureAwait(false);
 
                     list.Add(item);
+
+
+                    if (channelInfo.Item2.ChannelGroup != "") {
+                        // if this is a new group title, add to the dictionary
+                        if (!tvGroupDictionary.ContainsKey(channelInfo.Item2.ChannelGroup)) {
+                            tvGroupDictionary.Add(channelInfo.Item2.ChannelGroup, new List<LiveTvChannel>());
+                        }
+
+                        // add channel id to group
+                        if (tvGroupDictionary.TryGetValue(channelInfo.Item2.ChannelGroup, out List<LiveTvChannel> groupChannels)) {
+                            groupChannels.Add(item);
+                        }
+                    }
                 }
                 catch (OperationCanceledException)
                 {
@@ -1253,7 +1319,7 @@ namespace Emby.Server.Implementations.LiveTv
             }
 
             progress.Report(100);
-            return new Tuple<List<Guid>, List<Guid>>(channels, programs);
+            return (channels, programs, tvGroupDictionary);
         }
 
         private void CleanDatabaseInternal(Guid[] currentIdList, BaseItemKind[] validTypes, IProgress<double> progress, CancellationToken cancellationToken)

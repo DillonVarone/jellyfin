@@ -255,7 +255,7 @@ public class TranscodingJobHelper : IDisposable
         {
             foreach (var job in jobs)
             {
-                yield return KillTranscodingJob(job, true, deleteFiles);
+                yield return  KillTranscodingJob(job, true, deleteFiles);
             }
         }
 
@@ -282,11 +282,6 @@ public class TranscodingJobHelper : IDisposable
             {
                 job.CancellationTokenSource.Cancel();
             }
-        }
-
-        lock (_transcodingLocks)
-        {
-            _transcodingLocks.Remove(job.Path!);
         }
 
         lock (job.ProcessLock!)
@@ -334,6 +329,10 @@ public class TranscodingJobHelper : IDisposable
             }
         }
 
+        //TODO
+        //1) Only dispose on exit if its a live stream?
+        //2) Dispose on kill
+        // - I should have fixed all the cases where kill was not called to fix live streams not being closed
         if (closeLiveStream && !string.IsNullOrWhiteSpace(job.LiveStreamId))
         {
             try
@@ -346,6 +345,14 @@ public class TranscodingJobHelper : IDisposable
                 _logger.LogError(ex, "Error closing live stream for {Path}", job.Path);
             }
         }
+
+        // transcode lock should be removed once the job is killed and cleaned
+        lock (_transcodingLocks)
+        {
+            _transcodingLocks.Remove(job.Path!);
+        }
+
+        job.Dispose();
     }
 
     private async Task DeletePartialStreamFiles(string path, TranscodingJobType jobType, int retryCount, int delayMs)
@@ -808,15 +815,22 @@ public class TranscodingJobHelper : IDisposable
         else
         {
             _logger.LogError("FFmpeg exited with code {0}", process.ExitCode);
+
+            // in the case of error, just discard everything to be safe
+            if (job.CancellationTokenSource?.IsCancellationRequested == false && process.ExitCode != 137)
+            {
+                await KillTranscodingJob(job, true, path => true).ConfigureAwait(false);
+            }
+            job.Dispose();
         }
 
         // cleanup before disposing the job
-        if (job.CancellationTokenSource?.IsCancellationRequested == false)
-        {
-            await KillTranscodingJob(job, true, path => true).ConfigureAwait(false);
-        }
+        // if (job.CancellationTokenSource?.IsCancellationRequested == false)
+        // {
+        //     await KillTranscodingJob(job, true, path => true).ConfigureAwait(false);
+        // }
 
-        job.Dispose();
+        //job.Dispose();
     }
 
     private async Task AcquireResources(StreamState state, CancellationTokenSource cancellationTokenSource)
@@ -898,9 +912,10 @@ public class TranscodingJobHelper : IDisposable
 
     private void OnPlaybackProgress(object? sender, PlaybackProgressEventArgs e)
     {
-        if (!string.IsNullOrWhiteSpace(e.PlaySessionId))
+        if (!string.IsNullOrWhiteSpace(e.PlaySessionId) && !e.IsAutomated)
         {
             PingTranscodingJob(e.PlaySessionId, e.IsPaused);
+            //6fea7c2dfe8f434bbd0f6e4794c48553.ts??
         }
     }
 

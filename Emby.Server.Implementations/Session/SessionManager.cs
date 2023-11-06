@@ -822,20 +822,24 @@ namespace Emby.Server.Implementations.Session
 
             ArgumentNullException.ThrowIfNull(info);
 
-            var session = GetSession(info.SessionId);
-
-            if (!session.SessionControllers.Any(i => i.IsSessionActive))
+            var session = GetSession(info.SessionId, false);
+            if (session is null)
             {
-                try
-                {
-                    ReportSessionEnded(session.Id);
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogError(ex, "Error reporting session ended");
-                }
                 return;
             }
+
+            // if (!session.SessionControllers.Any(i => i.IsSessionActive))
+            // {
+            //     try
+            //     {
+            //         ReportSessionEnded(session.Id);
+            //     }
+            //     catch (Exception ex)
+            //     {
+            //         _logger.LogError(ex, "Error reporting session ended");
+            //     }
+            //     return;
+            // }
 
             var libraryItem = info.ItemId.Equals(default)
                 ? null

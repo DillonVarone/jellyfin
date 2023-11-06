@@ -10,6 +10,7 @@ using System.Net.Http;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
+using Jellyfin.Api.Controllers;
 using Jellyfin.Extensions;
 using MediaBrowser.Common.Extensions;
 using MediaBrowser.Common.Net;
@@ -90,6 +91,7 @@ namespace Emby.Server.Implementations.LiveTv.TunerHosts
                 }
                 else if (!string.IsNullOrWhiteSpace(extInf) && !trimmedLine.StartsWith('#'))
                 {
+                    //TODO DILLON add parsing for alternate channel links
                     var channel = GetChannelnfo(extInf, tunerHostId, trimmedLine);
                     if (string.IsNullOrWhiteSpace(channel.Id))
                     {
@@ -134,6 +136,18 @@ namespace Emby.Server.Implementations.LiveTv.TunerHosts
             if (attributes.TryGetValue("group-title", out string groupTitle))
             {
                 channel.ChannelGroup = groupTitle;
+            }
+
+            if (attributes.TryGetValue("backup-src", out string backups))
+            {
+                var backupPaths = backups.Split(',');
+                if (backupPaths.Length > 0) {
+                    channel.BackupPaths = new List<string>(backupPaths);;
+                } else {
+                    channel.BackupPaths = new List<string>();
+                }
+            } else {
+                channel.BackupPaths = new List<string>();
             }
 
             channel.Name = GetChannelName(extInf, attributes);

@@ -185,6 +185,7 @@ namespace Emby.Server.Implementations.LiveTv.TunerHosts
             var mediaSource = new MediaSourceInfo
             {
                 Path = path,
+                BackupPaths = channel.BackupPaths,
                 Protocol = protocol,
                 MediaStreams = new MediaStream[]
                 {

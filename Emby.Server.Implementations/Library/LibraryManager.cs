@@ -17,6 +17,7 @@ using Emby.Server.Implementations.Library.Resolvers;
 using Emby.Server.Implementations.Library.Validators;
 using Emby.Server.Implementations.Playlists;
 using Emby.Server.Implementations.ScheduledTasks.Tasks;
+using Jellyfin.Api.Auth.FirstTimeSetupPolicy;
 using Jellyfin.Data.Entities;
 using Jellyfin.Data.Enums;
 using Jellyfin.Extensions;
@@ -294,7 +295,8 @@ namespace Emby.Server.Implementations.Library
             }
             else if (!item.IsFolder)
             {
-                if (item is not Video && item is not LiveTvChannel)
+                //if (item is not Video && item is not LiveTvChannel)
+                if (item is not Video)
                 {
                     return;
                 }
@@ -2791,7 +2793,9 @@ namespace Emby.Server.Implementations.Library
                 {
                     _logger.LogDebug("ConvertImageToLocal item {0} - image url: {1}", item.Id, url);
 
-                    await ProviderManager.SaveImage(item, url, image.Type, imageIndex, CancellationToken.None).ConfigureAwait(false);
+                    var cancellationTokenSource = new CancellationTokenSource();
+                    cancellationTokenSource.CancelAfter(TimeSpan.FromSeconds(5));
+                    await ProviderManager.SaveImage(item, url, image.Type, imageIndex, cancellationTokenSource.Token).ConfigureAwait(false);
 
                     await item.UpdateToRepositoryAsync(ItemUpdateType.ImageUpdate, CancellationToken.None).ConfigureAwait(false);
 
