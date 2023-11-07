@@ -107,7 +107,7 @@ namespace Emby.Server.Implementations.LiveTv.TunerHosts
 
                 if (!success) {
                     // try backup url
-                    if (mediaSource.BackupPaths.Count > backupIndex + 1) {
+                    if (mediaSource.BackupPaths.Count > backupIndex) {
                         url = mediaSource.BackupPaths[backupIndex];
                         backupIndex++;
                     } else {

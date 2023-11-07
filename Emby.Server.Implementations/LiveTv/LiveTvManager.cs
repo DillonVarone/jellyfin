@@ -1111,7 +1111,7 @@ namespace Emby.Server.Implementations.LiveTv
                     _libraryManager.DeleteItem(tvCollection,
                         new DeleteOptions
                         {
-                            DeleteFileLocation = false,
+                            DeleteFileLocation = true,
                             DeleteFromExternalProvider = false
                         });
                 }
