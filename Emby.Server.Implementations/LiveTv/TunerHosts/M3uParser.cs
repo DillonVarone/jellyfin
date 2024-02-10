@@ -91,7 +91,6 @@ namespace Emby.Server.Implementations.LiveTv.TunerHosts
                 }
                 else if (!string.IsNullOrWhiteSpace(extInf) && !trimmedLine.StartsWith('#'))
                 {
-                    //TODO DILLON add parsing for alternate channel links
                     var channel = GetChannelnfo(extInf, tunerHostId, trimmedLine);
                     if (string.IsNullOrWhiteSpace(channel.Id))
                     {
@@ -145,6 +144,17 @@ namespace Emby.Server.Implementations.LiveTv.TunerHosts
                     channel.BackupPaths = new List<string>(backupPaths);;
                 } else {
                     channel.BackupPaths = new List<string>();
+                }
+            } else {
+                channel.BackupPaths = new List<string>();
+            }
+
+            if (attributes.TryGetValue("num-alts", out string strNumBackups))
+            {
+                var numBackups = int.Parse(strNumBackups, CultureInfo.InvariantCulture);
+                channel.BackupPaths = new List<string>();
+                for (int i = 1; i < numBackups; i++) {
+                    channel.BackupPaths.Add(string.Format(CultureInfo.InvariantCulture, "{0}/{1}", mediaUrl, i));
                 }
             } else {
                 channel.BackupPaths = new List<string>();

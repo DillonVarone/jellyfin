@@ -902,7 +902,7 @@ namespace Emby.Server.Implementations.LiveTv.EmbyTV
             {
                 if (!IsListingProviderEnabledForTuner(provider.Item2, channel.TunerHostId))
                 {
-                    _logger.LogDebug("Skipping getting programs for channel {0}-{1} from {2}-{3}, because it's not enabled for this tuner.", channel.Number, channel.Name, provider.Item1.Name, provider.Item2.ListingsId ?? string.Empty);
+                    _logger.LogInformation("Skipping getting programs for channel {0}-{1} from {2}-{3}, because it's not enabled for this tuner.", channel.Number, channel.Name, provider.Item1.Name, provider.Item2.ListingsId ?? string.Empty);
                     continue;
                 }
 
@@ -912,7 +912,7 @@ namespace Emby.Server.Implementations.LiveTv.EmbyTV
 
                 if (epgChannel is null)
                 {
-                    _logger.LogDebug("EPG channel not found for tuner channel {0}-{1} from {2}-{3}", channel.Number, channel.Name, provider.Item1.Name, provider.Item2.ListingsId ?? string.Empty);
+                    _logger.LogInformation("EPG channel not found for tuner channel {0}-{1} from {2}-{3}", channel.Number, channel.Name, provider.Item1.Name, provider.Item2.ListingsId ?? string.Empty);
                     continue;
                 }
 

@@ -22,6 +22,7 @@ using MediaBrowser.Controller;
 using MediaBrowser.Controller.Configuration;
 using MediaBrowser.Controller.Library;
 using MediaBrowser.Controller.MediaEncoding;
+using MediaBrowser.Controller.LiveTv;
 using MediaBrowser.Model.Dto;
 using MediaBrowser.Model.IO;
 using MediaBrowser.Model.LiveTv;
@@ -89,20 +90,49 @@ namespace Emby.Server.Implementations.LiveTv.TunerHosts
             var backupIndex = 0;
             while (!string.IsNullOrEmpty(url) && !success) {
                 try {
-                    using var response = await _httpClientFactory.CreateClient(NamedClient.Default)
-                        .GetAsync(url, HttpCompletionOption.ResponseHeadersRead, CancellationToken.None)
+                    /* check if url can be reached */
+                    using var testResponse = await _httpClientFactory.CreateClient(NamedClient.Default)
+                        .GetAsync(url, HttpCompletionOption.ResponseHeadersRead, openCancellationToken)
                         .ConfigureAwait(false);
 
-                    if (response.IsSuccessStatusCode) {
-                        var contentType = response.Content.Headers.ContentType?.ToString() ?? string.Empty;
+                    if (testResponse.IsSuccessStatusCode) {
+                        var contentType = testResponse.Content.Headers.ContentType?.ToString() ?? string.Empty;
                         if (contentType.Contains("x-mpegurl", StringComparison.OrdinalIgnoreCase))
                         {
                             _isHLS = true;
                         }
-                        success = true;
+
+                        /* check if there is even any valid data in the stream */
+                        byte[] testBuffer = new byte[1024];
+                        await using var testStream = await testResponse.Content.ReadAsStreamAsync(openCancellationToken).ConfigureAwait(false);
+                        int testBytesRead = 0;
+                        using (var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5)))
+                        {
+                            try
+                            {
+                                // ReadAsync with CancellationToken
+                                testBytesRead = await testStream.ReadAsync(testBuffer, 0, testBuffer.Length, cts.Token);
+                            }
+                            catch (OperationCanceledException)
+                            {
+                                Logger.LogError("Timed out reading test bytes from stream {Url}", url);
+                            }
+                        }
+
+                        if (testBytesRead > 0)
+                        {
+                            Logger.LogInformation("Successfully checked stream {0} contains data", url);
+                            success = true;
+                        }
+                        else
+                        {
+                            Logger.LogError("Error checking stream {Url}, the stream was empty.", url);
+                        }
+                    } else {
+                        Logger.LogError("Error connecting to stream {0}, with code {1}", url, testResponse.IsSuccessStatusCode);
                     }
                 } catch (HttpRequestException ex) {
-                    Logger.LogError(ex, "Error checking stream {Url}", url);
+                    Logger.LogError(ex, "Error connecting to stream {Url}", url);
                 }
 
                 if (!success) {
@@ -118,7 +148,8 @@ namespace Emby.Server.Implementations.LiveTv.TunerHosts
 
             if (!success) {
                 // default behavior on failure to just try original source
-                url = mediaSource.Path;
+                //url = mediaSource.Path;
+                throw new LiveTvConflictException("Failed to find a valid source for media");
             }
 
             // if (_isHLS)
