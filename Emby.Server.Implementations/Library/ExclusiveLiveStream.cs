@@ -7,6 +7,7 @@ using System.Globalization;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Collections.Generic;
 using MediaBrowser.Controller.Library;
 using MediaBrowser.Model.Dto;
 
@@ -23,6 +24,8 @@ namespace Emby.Server.Implementations.Library
             _closeFn = closeFn;
             ConsumerCount = 1;
             UniqueId = Guid.NewGuid().ToString("N", CultureInfo.InvariantCulture);
+
+            SessionIds = new List<string>();
         }
 
         public int ConsumerCount { get; set; }
@@ -38,6 +41,8 @@ namespace Emby.Server.Implementations.Library
         public string UniqueId { get; }
 
         public bool AllowCleanup { get; set; }
+
+        public List<string> SessionIds { get; set; }
 
         public Task Close()
         {

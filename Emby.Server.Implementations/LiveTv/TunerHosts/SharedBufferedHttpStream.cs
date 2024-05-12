@@ -51,6 +51,7 @@ namespace Emby.Server.Implementations.LiveTv.TunerHosts
             MediaSourceInfo mediaSource,
             TunerHostInfo tunerHostInfo,
             string originalStreamId,
+            string sessionId,
             IFileSystem fileSystem,
             ILogger logger,
             IConfigurationManager configurationManager,
@@ -71,6 +72,8 @@ namespace Emby.Server.Implementations.LiveTv.TunerHosts
             OriginalStreamId = originalStreamId;
             EnableStreamSharing = true;
             IsEndless = true;
+
+            SessionIds.Add(sessionId);
         }
 
         public override async Task Open(CancellationToken openCancellationToken)
@@ -89,10 +92,17 @@ namespace Emby.Server.Implementations.LiveTv.TunerHosts
             var success = false;
             var backupIndex = 0;
             while (!string.IsNullOrEmpty(url) && !success) {
+                /* max latency to determine stream validity is 10s */
+                var timeoutCts = new CancellationTokenSource();
+                timeoutCts.CancelAfter(TimeSpan.FromSeconds(10));
+
+                /* link this token with open cancellation */
+                var openCts = CancellationTokenSource.CreateLinkedTokenSource(timeoutCts.Token, openCancellationToken);
                 try {
+
                     /* check if url can be reached */
                     using var testResponse = await _httpClientFactory.CreateClient(NamedClient.Default)
-                        .GetAsync(url, HttpCompletionOption.ResponseHeadersRead, openCancellationToken)
+                        .GetAsync(url, HttpCompletionOption.ResponseHeadersRead, openCts.Token)
                         .ConfigureAwait(false);
 
                     if (testResponse.IsSuccessStatusCode) {
@@ -106,17 +116,14 @@ namespace Emby.Server.Implementations.LiveTv.TunerHosts
                         byte[] testBuffer = new byte[1024];
                         await using var testStream = await testResponse.Content.ReadAsStreamAsync(openCancellationToken).ConfigureAwait(false);
                         int testBytesRead = 0;
-                        using (var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5)))
+                        try
                         {
-                            try
-                            {
-                                // ReadAsync with CancellationToken
-                                testBytesRead = await testStream.ReadAsync(testBuffer, 0, testBuffer.Length, cts.Token);
-                            }
-                            catch (OperationCanceledException)
-                            {
-                                Logger.LogError("Timed out reading test bytes from stream {Url}", url);
-                            }
+                            // ReadAsync with CancellationToken
+                            testBytesRead = await testStream.ReadAsync(testBuffer, 0, testBuffer.Length, openCts.Token);
+                        }
+                        catch (OperationCanceledException)
+                        {
+                            Logger.LogError("Timed out reading test bytes from stream {Url}", url);
                         }
 
                         if (testBytesRead > 0)
@@ -133,6 +140,9 @@ namespace Emby.Server.Implementations.LiveTv.TunerHosts
                     }
                 } catch (HttpRequestException ex) {
                     Logger.LogError(ex, "Error connecting to stream {Url}", url);
+                } finally {
+                    timeoutCts.Dispose();
+                    openCts.Dispose();
                 }
 
                 if (!success) {

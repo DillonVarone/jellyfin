@@ -14,6 +14,7 @@ using MediaBrowser.Controller.Library;
 using MediaBrowser.Model.Dto;
 using MediaBrowser.Model.LiveTv;
 using MediaBrowser.Model.Querying;
+using MediaBrowser.Model.MediaInfo;
 
 namespace MediaBrowser.Controller.LiveTv
 {
@@ -120,10 +121,11 @@ namespace MediaBrowser.Controller.LiveTv
         /// </summary>
         /// <param name="id">The identifier.</param>
         /// <param name="mediaSourceId">The media source identifier.</param>
+        /// <param name="request">The request for the stream.</param>
         /// <param name="currentLiveStreams">The current live streams.</param>
         /// <param name="cancellationToken">The cancellation token.</param>
         /// <returns>Task{StreamResponseInfo}.</returns>
-        Task<Tuple<MediaSourceInfo, ILiveStream>> GetChannelStream(string id, string mediaSourceId, List<ILiveStream> currentLiveStreams, CancellationToken cancellationToken);
+        Task<Tuple<MediaSourceInfo, ILiveStream>> GetChannelStream(string id, string mediaSourceId, LiveStreamRequest request, List<ILiveStream> currentLiveStreams, CancellationToken cancellationToken);
 
         /// <summary>
         /// Gets the program.

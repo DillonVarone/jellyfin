@@ -337,7 +337,7 @@ public class TranscodingJobHelper : IDisposable
         {
             try
             {
-                await _mediaSourceManager.CloseLiveStream(job.LiveStreamId).ConfigureAwait(false);
+                await _mediaSourceManager.CloseLiveStream(job.LiveStreamId, job.SessionId).ConfigureAwait(false);
                 job.LiveStreamId = string.Empty;
             }
             catch (Exception ex)
@@ -583,10 +583,13 @@ public class TranscodingJobHelper : IDisposable
             EnableRaisingEvents = true
         };
 
+        var sessionId = await RequestHelpers.GetSessionId(_sessionManager, _userManager, request.HttpContext).ConfigureAwait(false);
+
         var transcodingJob = this.OnTranscodeBeginning(
             outputPath,
             state.Request.PlaySessionId,
             state.MediaSource.LiveStreamId,
+            sessionId,
             Guid.NewGuid().ToString("N", CultureInfo.InvariantCulture),
             transcodingJobType,
             process,
@@ -666,7 +669,7 @@ public class TranscodingJobHelper : IDisposable
             // need to close livestream if it exists
             if (!string.IsNullOrWhiteSpace(transcodingJob.LiveStreamId))
             {
-                await _mediaSourceManager.CloseLiveStream(transcodingJob.LiveStreamId).ConfigureAwait(false);
+                await _mediaSourceManager.CloseLiveStream(transcodingJob.LiveStreamId, transcodingJob.SessionId).ConfigureAwait(false);
                 transcodingJob.LiveStreamId = string.Empty;
             }
 
@@ -704,6 +707,7 @@ public class TranscodingJobHelper : IDisposable
     /// <param name="path">The path.</param>
     /// <param name="playSessionId">The play session identifier.</param>
     /// <param name="liveStreamId">The live stream identifier.</param>
+    /// <param name="sessionId">The lsession identifier.</param>
     /// <param name="transcodingJobId">The transcoding job identifier.</param>
     /// <param name="type">The type.</param>
     /// <param name="process">The process.</param>
@@ -715,6 +719,7 @@ public class TranscodingJobHelper : IDisposable
         string path,
         string? playSessionId,
         string? liveStreamId,
+        string? sessionId,
         string transcodingJobId,
         TranscodingJobType type,
         Process process,
@@ -734,6 +739,7 @@ public class TranscodingJobHelper : IDisposable
                 CancellationTokenSource = cancellationTokenSource,
                 Id = transcodingJobId,
                 PlaySessionId = playSessionId,
+                SessionId = sessionId,
                 LiveStreamId = liveStreamId,
                 MediaSource = state.MediaSource
             };

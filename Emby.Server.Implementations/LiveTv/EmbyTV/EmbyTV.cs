@@ -954,7 +954,7 @@ namespace Emby.Server.Implementations.LiveTv.EmbyTV
             throw new NotImplementedException();
         }
 
-        public async Task<ILiveStream> GetChannelStreamWithDirectStreamProvider(string channelId, string streamId, List<ILiveStream> currentLiveStreams, CancellationToken cancellationToken)
+        public async Task<ILiveStream> GetChannelStreamWithDirectStreamProvider(string channelId, string streamId, LiveStreamRequest request, List<ILiveStream> currentLiveStreams, CancellationToken cancellationToken)
         {
             _logger.LogInformation("Streaming Channel {Id}", channelId);
 
@@ -964,9 +964,13 @@ namespace Emby.Server.Implementations.LiveTv.EmbyTV
 
             if (result is not null && result.EnableStreamSharing)
             {
-                result.ConsumerCount++;
+                /* only increment the consumer count if this is a new session */
+                if (!string.IsNullOrWhiteSpace(request.SessionId) || !result.SessionIds.Contains(request.SessionId)) {
+                    result.SessionIds.Add(request.SessionId);
+                    result.ConsumerCount++;
 
-                _logger.LogInformation("Live stream {0} consumer count is now {1}", streamId, result.ConsumerCount);
+                    _logger.LogInformation("Live stream {0} consumer count is now {1}, after adding {2}", streamId, result.ConsumerCount, request.SessionId);
+                }
 
                 return result;
             }
@@ -975,7 +979,7 @@ namespace Emby.Server.Implementations.LiveTv.EmbyTV
             {
                 try
                 {
-                    result = await hostInstance.GetChannelStream(channelId, streamId, currentLiveStreams, cancellationToken).ConfigureAwait(false);
+                    result = await hostInstance.GetChannelStream(channelId, streamId, request, currentLiveStreams, cancellationToken).ConfigureAwait(false);
 
                     var openedMediaSource = result.MediaSource;
 

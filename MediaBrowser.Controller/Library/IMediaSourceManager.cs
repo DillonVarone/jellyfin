@@ -131,6 +131,14 @@ namespace MediaBrowser.Controller.Library
         /// <returns>Task.</returns>
         Task CloseLiveStream(string id);
 
+        /// <summary>
+        /// Closes the media source.
+        /// </summary>
+        /// <param name="id">The live stream identifier.</param>
+        /// <param name="sessionId">The session identifier.</param>
+        /// <returns>Task.</returns>
+        Task CloseLiveStream(string id, string sessionId);
+
         Task<MediaSourceInfo> GetLiveStreamMediaInfo(string id, CancellationToken cancellationToken);
 
         bool SupportsDirectStream(string path, MediaProtocol protocol);

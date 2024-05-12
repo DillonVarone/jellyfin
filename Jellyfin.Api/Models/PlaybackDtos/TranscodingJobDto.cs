@@ -41,6 +41,12 @@ public class TranscodingJobDto : IDisposable
     public string? PlaySessionId { get; set; }
 
     /// <summary>
+    /// Gets or sets the session identifier.
+    /// </summary>
+    /// <value>The session identifier.</value>
+    public string? SessionId { get; set; }
+
+    /// <summary>
     /// Gets or sets the live stream identifier.
     /// </summary>
     /// <value>The live stream identifier.</value>

@@ -7,11 +7,13 @@ using System.Globalization;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Collections.Generic;
 using MediaBrowser.Common.Configuration;
 using MediaBrowser.Controller.Library;
 using MediaBrowser.Model.Dto;
 using MediaBrowser.Model.IO;
 using MediaBrowser.Model.LiveTv;
+using MediaBrowser.Model.MediaInfo;
 using Microsoft.Extensions.Logging;
 
 namespace Emby.Server.Implementations.LiveTv.TunerHosts
@@ -45,6 +47,8 @@ namespace Emby.Server.Implementations.LiveTv.TunerHosts
 
             ConsumerCount = 1;
             SetTempFilePath("ts");
+
+            SessionIds = new List<string>();
         }
 
         protected IFileSystem FileSystem { get; }
@@ -76,6 +80,7 @@ namespace Emby.Server.Implementations.LiveTv.TunerHosts
         public bool AllowCleanup { get; set; }
 
         public bool IsEndless { get; set; }
+        public List<string> SessionIds { get; set; }
 
         protected void SetTempFilePath(string extension)
         {

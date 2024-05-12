@@ -7,6 +7,7 @@ using MediaBrowser.Controller.Channels;
 using MediaBrowser.Controller.Entities;
 using MediaBrowser.Controller.Library;
 using MediaBrowser.Model.Dto;
+using MediaBrowser.Model.MediaInfo;
 
 namespace Emby.Server.Implementations.Channels
 {
@@ -36,6 +37,12 @@ namespace Emby.Server.Implementations.Channels
 
         /// <inheritdoc />
         public Task<ILiveStream> OpenMediaSource(string openToken, List<ILiveStream> currentLiveStreams, CancellationToken cancellationToken)
+        {
+            throw new NotImplementedException();
+        }
+
+        /// <inheritdoc />
+        public Task<ILiveStream> OpenMediaSource(string openToken, LiveStreamRequest request, List<ILiveStream> currentLiveStreams, CancellationToken cancellationToken)
         {
             throw new NotImplementedException();
         }

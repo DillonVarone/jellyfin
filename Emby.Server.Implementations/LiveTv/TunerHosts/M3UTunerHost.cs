@@ -101,7 +101,7 @@ namespace Emby.Server.Implementations.LiveTv.TunerHosts
             return Task.FromResult(list);
         }
 
-        protected override async Task<ILiveStream> GetChannelStream(TunerHostInfo tunerHost, ChannelInfo channel, string streamId, List<ILiveStream> currentLiveStreams, CancellationToken cancellationToken)
+        protected override async Task<ILiveStream> GetChannelStream(TunerHostInfo tunerHost, ChannelInfo channel, string streamId, LiveStreamRequest request, List<ILiveStream> currentLiveStreams, CancellationToken cancellationToken)
         {
             var tunerCount = tunerHost.TunerCount;
 
@@ -112,6 +112,7 @@ namespace Emby.Server.Implementations.LiveTv.TunerHosts
 
                 if (liveStreams.Count() >= tunerCount)
                 {
+                    Logger.LogError("M3U simultaneous stream limit has been reached, current streams: {0}", liveStreams);
                     throw new LiveTvConflictException("M3U simultaneous stream limit has been reached.");
                 }
             }
@@ -130,6 +131,7 @@ namespace Emby.Server.Implementations.LiveTv.TunerHosts
                         mediaSource,
                         tunerHost,
                         streamId,
+                        request.SessionId,
                         FileSystem,
                         Logger,
                         Config,

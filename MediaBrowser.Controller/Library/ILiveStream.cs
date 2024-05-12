@@ -2,6 +2,7 @@
 
 #pragma warning disable CA1711, CS1591
 
+using System.Collections.Generic;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
@@ -24,6 +25,8 @@ namespace MediaBrowser.Controller.Library
         string UniqueId { get; }
 
         bool AllowCleanup { get; set; }
+
+        List<string> SessionIds { get; set; }
 
         Task Open(CancellationToken openCancellationToken);
 

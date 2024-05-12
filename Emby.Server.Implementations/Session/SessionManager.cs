@@ -316,7 +316,8 @@ namespace Emby.Server.Implementations.Session
         {
             if (!session.SessionControllers.Any(i => i.IsSessionActive))
             {
-                var key = GetSessionKey(session.Client, session.DeviceId);
+                //var key = GetSessionKey(session.Client, session.DeviceId);
+                var key = GetSessionKey(session.Client, session.DeviceId, session.RemoteEndPoint, session.UserId.ToString());
 
                 try
                 {
@@ -338,11 +339,11 @@ namespace Emby.Server.Implementations.Session
 
                 if (!string.IsNullOrEmpty(session.PlayState?.LiveStreamId) && string.IsNullOrEmpty(session.TranscodingInfo?.LiveStreamId))
                 {
-                    await _mediaSourceManager.CloseLiveStream(session.PlayState.LiveStreamId).ConfigureAwait(false);
+                    await _mediaSourceManager.CloseLiveStream(session.PlayState.LiveStreamId, session.Id).ConfigureAwait(false);
                 }
                 else
                 {
-                    await CleanupDanglingStreams();
+                    await CleanupDanglingStreams(session.Id);
                 }
 
                 OnSessionEnded(session);
@@ -357,7 +358,8 @@ namespace Emby.Server.Implementations.Session
 
             if (session is not null)
             {
-                var key = GetSessionKey(session.Client, session.DeviceId);
+                //var key = GetSessionKey(session.Client, session.DeviceId);
+                var key = GetSessionKey(session.Client, session.DeviceId, session.RemoteEndPoint, session.UserId.ToString());
 
                 _activeConnections.TryRemove(key, out _);
 
@@ -459,8 +461,10 @@ namespace Emby.Server.Implementations.Session
             }
         }
 
-        private static string GetSessionKey(string appName, string deviceId)
-            => appName + deviceId;
+        //private static string GetSessionKey(string appName, string deviceId)
+            //=> appName + deviceId;
+        private static string GetSessionKey(string appName, string deviceId, string remoteEndpoint, string userId)
+            => appName + remoteEndpoint + userId;
 
         /// <summary>
         /// Gets the connection.
@@ -484,7 +488,8 @@ namespace Emby.Server.Implementations.Session
 
             ArgumentException.ThrowIfNullOrEmpty(deviceId);
 
-            var key = GetSessionKey(appName, deviceId);
+            //var key = GetSessionKey(appName, deviceId);
+            var key = GetSessionKey(appName, deviceId, remoteEndPoint, user.Id.ToString());
 
             CheckDisposed();
 
@@ -492,6 +497,7 @@ namespace Emby.Server.Implementations.Session
             {
                 _activeConnections[key] = await CreateSession(key, appName, appVersion, deviceId, deviceName, remoteEndPoint, user).ConfigureAwait(false);
                 sessionInfo = _activeConnections[key];
+                _logger.LogInformation("Created session {0} for user {1} app {2} on {3} at {4}", sessionInfo.Id, user.Id, appName, deviceId, remoteEndPoint);
             }
 
             sessionInfo.UserId = user?.Id ?? Guid.Empty;
@@ -599,63 +605,49 @@ namespace Emby.Server.Implementations.Session
             }
         }
 
-        private async Task CleanupDanglingStreams()
+        private async Task CleanupDanglingStreams(string sessionId)
         {
-            List<KeyValuePair<string, ILiveStream>> openStreams = _mediaSourceManager.GetOpenStreams();
-            List<bool> isStreamActive = new List<bool>(openStreams.Count);
-            isStreamActive.AddRange(Enumerable.Repeat(false, openStreams.Count));
-
-            //Do initial check to find any unclaimed streams
-            int streamIdx = 0;
-            foreach (KeyValuePair<string, ILiveStream> liveStream in openStreams)
-            {
-                if (liveStream.Value.AllowCleanup)
-                {
-                    isStreamActive[streamIdx] = false;
-                    foreach (SessionInfo session in Sessions)
-                    {
-                        if (!string.IsNullOrEmpty(session.PlayState?.LiveStreamId) && session.PlayState.LiveStreamId == liveStream.Key ||
-                            !string.IsNullOrEmpty(session.TranscodingInfo?.LiveStreamId) && session.TranscodingInfo.LiveStreamId == liveStream.Key)
-                        {
-                            isStreamActive[streamIdx] = true;
-                            break;
-                        }
-                    }
-                }
-                streamIdx++;
-            }
-
             await Task.Delay(10000);
 
-            //Check again and close inactive streams
-            streamIdx = 0;
-            foreach (KeyValuePair<string, ILiveStream> liveStream in openStreams)
-            {
-                if (liveStream.Value.AllowCleanup)
-                {
+            List<KeyValuePair<string, ILiveStream>> openStreams = _mediaSourceManager.GetOpenStreams();
+            bool isSessionActive = false;
+
+            /* Do initial check to see if session became active again */
                     foreach (SessionInfo session in Sessions)
                     {
-                        if (!string.IsNullOrEmpty(session.PlayState?.LiveStreamId) && session.PlayState.LiveStreamId == liveStream.Key ||
-                            !string.IsNullOrEmpty(session.TranscodingInfo?.LiveStreamId) && session.TranscodingInfo.LiveStreamId == liveStream.Key)
+                if (sessionId == session.Id)
                         {
-                            isStreamActive[streamIdx] = true;
+                    isSessionActive = true;
                             break;
                         }
                     }
 
-                    if (!isStreamActive[streamIdx])
+            if (isSessionActive) {
+                return;
+            }
+
+            await Task.Delay(20000);
+
+            /* Check again that session is inactive and close inactive streams */
+                    foreach (SessionInfo session in Sessions)
                     {
-                        try
+                if (sessionId == session.Id)
                         {
-                            await _mediaSourceManager.CloseLiveStream(liveStream.Key).ConfigureAwait(false);
-                        }
-                        catch (Exception ex)
-                        {
-                            _logger.LogError(ex, "Error closing live stream");
+                    isSessionActive = true;
+                            break;
                         }
                     }
-                }
-                streamIdx++;
+
+            if (isSessionActive) {
+                return;
+            }
+
+            foreach (KeyValuePair<string, ILiveStream> liveStream in openStreams)
+            {
+                if (liveStream.Value.AllowCleanup && liveStream.Value.SessionIds.Contains(sessionId))
+                        {
+                    await _mediaSourceManager.CloseLiveStream(liveStream.Key, sessionId).ConfigureAwait(false);
+                        }
             }
         }
 

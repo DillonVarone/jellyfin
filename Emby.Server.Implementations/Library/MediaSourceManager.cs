@@ -479,9 +479,12 @@ namespace Emby.Server.Implementations.Library
 
                 var currentLiveStreams = _openStreams.Values.ToList();
 
-                liveStream = await provider.OpenMediaSource(keyId, currentLiveStreams, cancellationToken).ConfigureAwait(false);
+                _logger.LogInformation("Attempting to open stream {0} for {1}", keyId, request.SessionId);
+
+                liveStream = await provider.OpenMediaSource(keyId, request, currentLiveStreams, cancellationToken).ConfigureAwait(false);
 
                 liveStream.AllowCleanup = allowCleanup;
+                //liveStream.AllowCleanup = false;
 
                 mediaSource = liveStream.MediaSource;
 
@@ -819,6 +822,42 @@ namespace Emby.Server.Implementations.Library
 
                         await liveStream.Close().ConfigureAwait(false);
                         _logger.LogInformation("Live stream {0} closed successfully", id);
+                    }
+                }
+            }
+            finally
+            {
+                _liveStreamSemaphore.Release();
+            }
+        }
+
+        public async Task CloseLiveStream(string id, string sessionId)
+        {
+            ArgumentException.ThrowIfNullOrEmpty(id);
+
+            await _liveStreamSemaphore.WaitAsync().ConfigureAwait(false);
+
+            try
+            {
+                if (_openStreams.TryGetValue(id, out ILiveStream liveStream))
+                {
+                    if (liveStream.SessionIds.Contains(sessionId)) {
+                        liveStream.SessionIds.Remove(sessionId);
+                        liveStream.ConsumerCount--;
+
+                        _logger.LogInformation("Live stream {0} consumer count is now {1}, as {2} was removed", liveStream.OriginalStreamId, liveStream.ConsumerCount, sessionId);
+
+                        if (liveStream.ConsumerCount <= 0)
+                        {
+                            _openStreams.TryRemove(id, out _);
+
+                            _logger.LogInformation("Closing live stream {0}", id);
+
+                            await liveStream.Close().ConfigureAwait(false);
+                            _logger.LogInformation("Live stream {0} closed successfully", id);
+                        }
+                    } else {
+                        _logger.LogInformation("Live stream {0} closing was skipped as {1} is not present", id, sessionId);
                     }
                 }
             }

@@ -8,6 +8,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using MediaBrowser.Controller.Library;
 using MediaBrowser.Model.Dto;
+using MediaBrowser.Model.MediaInfo;
 
 namespace MediaBrowser.Controller.LiveTv
 {
@@ -178,7 +179,7 @@ namespace MediaBrowser.Controller.LiveTv
 
     public interface ISupportsDirectStreamProvider
     {
-        Task<ILiveStream> GetChannelStreamWithDirectStreamProvider(string channelId, string streamId, List<ILiveStream> currentLiveStreams, CancellationToken cancellationToken);
+        Task<ILiveStream> GetChannelStreamWithDirectStreamProvider(string channelId, string streamId, LiveStreamRequest request, List<ILiveStream> currentLiveStreams, CancellationToken cancellationToken);
     }
 
     public interface ISupportsUpdatingDefaults

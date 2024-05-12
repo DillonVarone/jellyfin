@@ -114,12 +114,29 @@ namespace Emby.Server.Implementations.LiveTv
         }
 
         /// <inheritdoc />
-        public async Task<ILiveStream> OpenMediaSource(string openToken, List<ILiveStream> currentLiveStreams, CancellationToken cancellationToken)
+        public async Task<ILiveStream> OpenMediaSource(string openToken,List<ILiveStream> currentLiveStreams, CancellationToken cancellationToken)
         {
             var keys = openToken.Split(StreamIdDelimiter, 3);
             var mediaSourceId = keys.Length >= 3 ? keys[2] : null;
 
-            var info = await _liveTvManager.GetChannelStream(keys[1], mediaSourceId, currentLiveStreams, cancellationToken).ConfigureAwait(false);
+            var request = new LiveStreamRequest
+            {
+                OpenToken = openToken
+            };
+
+            var info = await _liveTvManager.GetChannelStream(keys[1], mediaSourceId, request, currentLiveStreams, cancellationToken).ConfigureAwait(false);
+            var liveStream = info.Item2;
+
+            return liveStream;
+        }
+
+        /// <inheritdoc />
+        public async Task<ILiveStream> OpenMediaSource(string openToken, LiveStreamRequest request, List<ILiveStream> currentLiveStreams, CancellationToken cancellationToken)
+        {
+            var keys = openToken.Split(StreamIdDelimiter, 3);
+            var mediaSourceId = keys.Length >= 3 ? keys[2] : null;
+
+            var info = await _liveTvManager.GetChannelStream(keys[1], mediaSourceId, request, currentLiveStreams, cancellationToken).ConfigureAwait(false);
             var liveStream = info.Item2;
 
             return liveStream;
